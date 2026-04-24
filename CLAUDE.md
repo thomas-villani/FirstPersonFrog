@@ -30,8 +30,9 @@ First-person Frogger browser game — single-player MVP scaffold. Read in this o
 ## Level progression and lane layout
 
 - Lane count grows with level: `laneCountForLevel(level) = clamp(ceil(level / 2), 1, MAX_LANES)`. So levels 1–2 → 1 lane, 3–4 → 2, …, 15+ → 8 (capped).
-- Direction follows American convention but flattened: east lanes are placed contiguously starting at `laneIndex 0`, then west lanes contiguously. East count comes from a same-direction-pair count (size 2, last pair may be 1).
-  - `1: E   2: EE   3: EEW   4: EEWW   5: EEEWW   6: EEEEWW   7: EEEEWWW   8: EEEEWWWW`
+- Direction is divided-road style: east lanes are placed contiguously at low `laneIndex`, then west lanes. East count = `ceil(laneCount / 2)`.
+  - `1: E   2: EW   3: EEW   4: EEWW   5: EEEWW   6: EEEWWW   7: EEEEWWW   8: EEEEWWWW`
+- From level 2 onward, `Spawner.prePopulate(perLane)` seeds vehicles already in motion across each lane, so a fresh level isn't a free 10-second head start. Level 1 stays clean (matches the cinematic intro feel).
 - The LAST sub-row of every lane sits exactly on the white between-lane stripe and is **safe ground** — `spawner.js` constrains wheel placements so the lane's final row never has a wheel. The frog can rest on a stripe between lanes.
 - Past the cap (level > `CAPPED_AT_LEVEL` = 16), `buildLanesForLevel` applies two chaos modifiers: each lane has a per-level probability of being direction-flipped (scrambling the contiguous E/W blocks), and `spawnInterval` is multiplied down (denser traffic). Both ramp slowly with level.
 - The world is **rebuilt every crossing**. `Game._buildLevel(level)` disposes the old scene, creates a new `Frog`, `Spawner`, and `Scene` for the new lane count. The camera survives the rebuild (it's just re-parented), so player yaw/pitch persist across transitions.

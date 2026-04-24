@@ -80,6 +80,12 @@ export class Game {
     this.spawner = new Spawner(this.scene, buildLanesForLevel(level), this.audio);
     this.spawner.setSpeedMultiplier(1 + SPEED_RAMP_PER_LEVEL * (level - 1));
 
+    // Seed the road with traffic from level 2 onward — level 1 stays a clean intro,
+    // but later levels should already feel busy when the new world fades in.
+    // Cap at 4/lane so we don't spawn more vehicles than the spacing guard can fit.
+    const prePopulate = level <= 1 ? 0 : Math.min(4, Math.floor(level / 2) + 1);
+    this.spawner.prePopulate(prePopulate);
+
     this.frog.onLand = () => {
       if (this.state === 'PLAYING') this.audio.playHop();
     };

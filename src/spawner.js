@@ -3,6 +3,7 @@ import {
   VEHICLE_TYPES,
   MIN_SPAWN_SPACING,
   SUB_ROWS_PER_LANE,
+  ROAD_LENGTH,
   laneFirstRow,
 } from './config.js';
 
@@ -19,9 +20,27 @@ export class Spawner {
     this.speedMultiplier = 1;
   }
 
-  // Difficulty knob: spawn speeds are scaled by this on creation.
   setSpeedMultiplier(m) {
     this.speedMultiplier = m;
+  }
+
+  // Seed the road with `perLane` vehicles already in motion across each lane.
+  // Higher levels call this so the player isn't gifted a free 10-second head start
+  // while the first off-screen-spawned vehicle drives on. Vehicles are jittered
+  // around evenly-spaced X positions and rejected on spacing collision (which is
+  // unlikely with the spread we pick).
+  prePopulate(perLane) {
+    if (perLane <= 0) return;
+    const half = ROAD_LENGTH / 2;
+    const span = 2 * half;
+    for (const lane of this.lanesConfig) {
+      const segWidth = span / (perLane + 1);
+      for (let k = 0; k < perLane; k++) {
+        const baseX = -half + (k + 1) * segWidth;
+        const jitter = (Math.random() - 0.5) * segWidth * 0.6;
+        this._trySpawn(lane, baseX + jitter);
+      }
+    }
   }
 
   update(dt) {
@@ -46,29 +65,26 @@ export class Spawner {
     }
   }
 
-  _trySpawn(lane) {
+  // Spawns one vehicle in `lane` at world X. Defaults to the off-screen spawn edge,
+  // but pre-population passes mid-road X values to seed traffic.
+  _trySpawn(lane, spawnX = spawnXForDirection(lane.direction)) {
     const typeName = pickWeighted(lane.mix);
     const type = VEHICLE_TYPES[typeName];
-    const spawnX = spawnXForDirection(lane.direction);
 
-    // Spacing guard: reject if a vehicle behind would clip the new spawn.
+    // Spacing guard against any other vehicle in this lane (regardless of direction
+    // of approach — pre-populated vehicles can be on either side).
     const newLength = type.size.L;
     for (const v of this.vehicles) {
       if (v.lane.laneIndex !== lane.laneIndex || v.direction !== lane.direction) continue;
-      const dist = (v.x - spawnX) * lane.direction;
-      if (dist < 0) continue;
       const minRequired = (v.length + newLength) / 2 + MIN_SPAWN_SPACING;
-      if (dist < minRequired) return; // skip this attempt, try again next cycle
+      if (Math.abs(v.x - spawnX) < minRequired) return;
     }
 
-    // Pick a random valid pair of wheel-rows within the lane.
     // Wheels are forbidden from the lane's LAST sub-row — that row sits on the
     // between-lane white stripe, which is "safe" ground the frog can rest on.
-    // So r2 = r1 + spread must satisfy r2 <= firstRow + SUB_ROWS_PER_LANE - 2
-    // (i.e. second-to-last row), giving validPlacements = SUB_ROWS_PER_LANE - 1 - spread.
     const spread = type.wheelRowSpread;
     const validPlacements = SUB_ROWS_PER_LANE - 1 - spread;
-    if (validPlacements < 1) return; // type wider than the lane — config error, skip
+    if (validPlacements < 1) return;
     const firstRow = laneFirstRow(lane.laneIndex);
     const r1 = firstRow + Math.floor(Math.random() * validPlacements);
     const wheelRows = [r1, r1 + spread];

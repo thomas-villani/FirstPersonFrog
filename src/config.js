@@ -53,12 +53,10 @@ export const STRIPE_WIDTH_DIVIDER = 0.34; // safe between-lane stripe — wider 
 //   levels 5–6 → 3 lanes   levels 13–14 → 7 lanes
 //   levels 7–8 → 4 lanes   levels 15+   → 8 lanes (capped)
 //
-// Direction follows American convention: lanes are "paired" same-direction, but east lanes
-// are placed CONTIGUOUSLY first (closer to start), then west lanes contiguously.
-//   1: E         2: EE        3: EEW        4: EEWW
-//   5: EEEWW     6: EEEEWW    7: EEEEWWW    8: EEEEWWWW
-// East count is computed from the same pair sizing my old formula used (pairs of 2,
-// last pair may be 1) — but the LAYOUT puts all E lanes first.
+// Direction follows a divided-road convention: east lanes contiguously near the start,
+// then west lanes contiguously near the goal. East count = ceil(laneCount / 2).
+//   1: E         2: EW        3: EEW        4: EEWW
+//   5: EEEWW     6: EEEWWW    7: EEEEWWW    8: EEEEWWWW
 //
 // Once we hit MAX_LANES, further level-ups stop adding lanes and instead start applying
 // random direction flips to individual lanes (so the contiguous E/W blocks get scrambled
@@ -141,19 +139,10 @@ export function goalRowForLevel(level) {
 // First level at which the lane count is capped — beyond this we apply chaos modifiers.
 export const CAPPED_AT_LEVEL = MAX_LANES * LEVELS_PER_LANE_STEP; // 16
 
-// --- East/West partition (American pairing) ---
-// Counts east lanes by walking same-direction pairs (last pair may be size 1), then we
-// place ALL east lanes contiguously starting from laneIndex 0.
+// East lane count for a given total lane count. East lanes go at low laneIndex; west
+// lanes fill the remainder.
 function eastCountForLanes(n) {
-  if (n <= 0) return 0;
-  const numPairs = Math.ceil(n / 2);
-  let east = 0;
-  for (let p = 0; p < numPairs; p++) {
-    const isLastPair = p === numPairs - 1;
-    const pairSize = isLastPair && n % 2 === 1 ? 1 : 2;
-    if (p % 2 === 0) east += pairSize;
-  }
-  return east;
+  return Math.max(0, Math.ceil(n / 2));
 }
 
 // --- Build the LANES config for a given level ---
