@@ -1,10 +1,13 @@
-// Tiny DOM-based HUD. Death counter, red damage flash, CROSSED toast.
+// Tiny DOM-based HUD. Death counter, level counter, red damage flash, level-up toast.
 export class Hud {
   constructor() {
     this.deathEl = document.getElementById('death-count');
     this.flashEl = document.getElementById('flash');
     this.toastEl = document.getElementById('toast');
+    this.levelEl = document.getElementById('level');
     this.deaths = 0;
+    this.level = 1;
+    this._renderLevel();
   }
 
   onDeath() {
@@ -17,11 +20,19 @@ export class Hud {
     }, 60);
   }
 
+  // Returns the new level so the Game can ramp difficulty.
   onWin() {
-    this.toastEl.textContent = 'CROSSED!';
+    this.level++;
+    this._renderLevel();
+    this.toastEl.textContent = `LEVEL ${this.level}`;
     this.toastEl.style.opacity = '1';
     setTimeout(() => {
       this.toastEl.style.opacity = '0';
-    }, 800);
+    }, 1100);
+    return this.level;
+  }
+
+  _renderLevel() {
+    if (this.levelEl) this.levelEl.textContent = `LEVEL ${this.level}`;
   }
 }

@@ -1,10 +1,15 @@
 import { PITCH_CLAMP } from './config.js';
 
 // Owns keyboard, pointer lock, mouse-look, and the click-to-start overlay.
-// Hard-commit model: the frog itself rejects keypresses while mid-hop.
+// Hard-commit model: the frog itself rejects keypresses while mid-hop. We additionally
+// gate input on game.state === 'PLAYING' so the intro flythrough and pause state don't
+// react to mouse-look or hops.
+//
+// We intentionally read `game.frog` lazily (not a cached reference) — Game replaces the
+// Frog instance on every level transition, so a stale field would silently stop working
+// after the first crossing.
 export class Input {
-  constructor(frog, camera, game) {
-    this.frog = frog;
+  constructor(camera, game) {
     this.camera = camera;
     this.game = game;
 
@@ -28,32 +33,41 @@ export class Input {
     this.overlay.addEventListener('click', this._onOverlayClick);
   }
 
+  // Called by Game after the intro tween finishes — the camera was just re-parented
+  // and its rotation was hard-reset, so our cached yaw/pitch must reset too.
+  resetLook() {
+    this.yaw = 0;
+    this.pitch = 0;
+    this.camera.rotation.set(0, 0, 0);
+  }
+
   _onKeyDown(e) {
     if (e.repeat) return;
-    // Only accept hop keys while pointer-locked (i.e. actively playing).
-    if (document.pointerLockElement !== this.canvas) return;
+    if (this.game.state !== 'PLAYING') return;
+    const frog = this.game.frog;
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':
-        this.frog.tryHop(+1, 0);
+        frog.tryHop(+1, 0);
         break;
       case 'KeyS':
       case 'ArrowDown':
-        this.frog.tryHop(-1, 0);
+        frog.tryHop(-1, 0);
         break;
       case 'KeyA':
       case 'ArrowLeft':
-        this.frog.tryHop(0, -1);
+        frog.tryHop(0, -1);
         break;
       case 'KeyD':
       case 'ArrowRight':
-        this.frog.tryHop(0, +1);
+        frog.tryHop(0, +1);
         break;
     }
   }
 
   _onMouseMove(e) {
     if (document.pointerLockElement !== this.canvas) return;
+    if (this.game.state !== 'PLAYING') return;
     const sensitivity = 0.0025;
     this.yaw -= e.movementX * sensitivity;
     this.pitch -= e.movementY * sensitivity;
@@ -66,18 +80,18 @@ export class Input {
   _onOverlayClick() {
     // User gesture: do BOTH pointer-lock request and audio context resume here.
     this.canvas.requestPointerLock();
-    if (this.game.audio) this.game.audio.resume();
+    this.game.audio.resume();
   }
 
   _onPointerLockChange() {
     const locked = document.pointerLockElement === this.canvas;
     if (locked) {
       this.overlay.classList.add('hidden');
-      this.game.paused = false;
+      this.game.onLockAcquired();
     } else {
       this.overlayLabel.textContent = 'CLICK TO RESUME';
       this.overlay.classList.remove('hidden');
-      this.game.paused = true;
+      this.game.onLockLost();
     }
   }
 

@@ -197,7 +197,6 @@ No automated tests in MVP. Verification is by playing.
 
 - Multiplayer (design doc §13).
 - River level (§8 stretch).
-- Level progression beyond the single MVP road.
 - Ragdoll / varied death animations.
 - Top-down death replay screen.
 - Chiptune music, horn SFX, near-miss stings.
@@ -206,3 +205,10 @@ No automated tests in MVP. Verification is by playing.
 - Leaderboards, VR, mobile.
 
 Each of these is its own plan when the time comes.
+
+## 11. Future improvements (post-playtest)
+
+Open items uncovered during playtests of the MVP scaffold. Each is small enough to fold into a session, but is intentionally NOT in §7 because the MVP shipped without them.
+
+- **Crossing rewards beyond the level toast.** Currently a successful crossing bumps a level counter, plays a chime, ramps speeds, and rebuilds the world for the new lane count. Could add: per-level palette/fog tint shifts, new vehicle types, intermittent "rush hour" spawn bursts.
+- **Doppler/HUD danger indicator.** Engine doppler is audio-only today (`audio.js` updates pitch + gain on approach). Optional visual cue: a peripheral DOM blip or screen-edge flash when a fast vehicle is closing from behind, since the camera can't see backwards without the player turning.

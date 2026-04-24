@@ -2,7 +2,6 @@ import {
   APPROACH_PITCH,
   MAX_AUDIBLE_DISTANCE,
   ENGINE_POOL_SIZE,
-  rowToZ,
 } from './config.js';
 
 // Web Audio API wrapper. Procedural SFX (no WAV assets) so there's no asset pipeline.
@@ -26,6 +25,12 @@ export class AudioManager {
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') await this.ctx.resume();
+  }
+
+  // Pause everything (engine loops, in-flight one-shots) when the game is paused.
+  async suspend() {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'running') await this.ctx.suspend();
   }
 
   // Short wet "splat" on frog landing.
@@ -99,6 +104,28 @@ export class AudioManager {
     osc.stop(now + duration);
   }
 
+  // Quick celebratory chime on a successful crossing.
+  playWin() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99]; // C5 E5 G5
+    notes.forEach((freq, i) => {
+      const t0 = now + i * 0.09;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(0.35, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.4);
+    });
+  }
+
   // Attach a looping engine voice to a vehicle. Idempotent — safe to call twice.
   // Silently no-ops if the pool is full; far-away vehicles will be silent until a slot frees.
   attachEngine(vehicle) {
@@ -145,14 +172,12 @@ export class AudioManager {
 
     for (const v of vehicles) {
       if (!v._engine) continue;
-      const vz = rowToZ(v.row);
       const dx = v.x - frogX;
-      const dz = vz - frogZ;
+      const dz = v.z - frogZ;
       const dist = Math.hypot(dx, dz);
       const distanceFactor = Math.max(0, 1 - dist / MAX_AUDIBLE_DISTANCE);
 
-      // Approaching if vehicle's motion would decrease dx magnitude.
-      // d(|dx|)/dt = sign(dx) * direction * speed → approaching when sign(dx) * direction < 0.
+      // Approaching if vehicle's motion would decrease |dx|.
       const approachingSign = -Math.sign(dx) * v.direction;
       const pitchMult = 1 + APPROACH_PITCH * approachingSign * distanceFactor;
 

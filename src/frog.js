@@ -7,7 +7,6 @@ import {
   HEAD_BOB_DECAY_MS,
   STRAFE_MAX,
   START_ROW,
-  GOAL_ROW,
   rowToZ,
   cellXToWorldX,
 } from './config.js';
@@ -18,7 +17,7 @@ const BOB_DURATION = HEAD_BOB_DECAY_MS / 1000;
 // State machine: IDLE | HOPPING | DEAD.
 // Hard-commit: inputs are only accepted when state === IDLE. Mid-hop presses are dropped.
 export class Frog {
-  constructor(scene, camera) {
+  constructor(scene, camera, goalRow) {
     this.group = new THREE.Group();
     scene.add(this.group);
 
@@ -29,6 +28,7 @@ export class Frog {
 
     this.row = START_ROW;
     this.cellX = 0;
+    this.goalRow = goalRow;
     this.state = 'IDLE';
 
     // Hop tween state.
@@ -75,7 +75,7 @@ export class Frog {
     if (this.state !== 'IDLE') return false;
     const newRow = this.row + dRow;
     const newCell = this.cellX + dCell;
-    if (newRow < 0 || newRow > GOAL_ROW) return false;
+    if (newRow < 0 || newRow > this.goalRow) return false;
     if (newCell < -STRAFE_MAX || newCell > STRAFE_MAX) return false;
 
     this._hopStart.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
