@@ -70,6 +70,8 @@ export const LEVELS_PER_LANE_STEP = 2; // 2 levels per lane added
 // `wheelRowSpread` = number of sub-rows between the two wheel-path lines (left vs right wheels).
 //   Sedan spread=4 → 2.0m wheel-track. Truck spread=5 → 2.5m wheel-track.
 //   Wheels never land on the lane's last sub-row (that's the safe between-lane stripe).
+// `scoreThreaded` overrides SCORE_THREADED per type — shorter wheelbases are
+// harder to thread, so smaller vehicles pay more.
 export const VEHICLE_TYPES = {
   sedan: {
     size: { L: 4.5, W: 2.0, H: 1.5 },
@@ -77,6 +79,7 @@ export const VEHICLE_TYPES = {
     wheelRadius: 0.35,
     wheelWidth: 0.25,
     wheelRowSpread: 4,
+    scoreThreaded: 500,
   },
   truck: {
     size: { L: 12, W: 2.5, H: 3.5 },
@@ -84,6 +87,7 @@ export const VEHICLE_TYPES = {
     wheelRadius: 0.55,
     wheelWidth: 0.35,
     wheelRowSpread: 5,
+    scoreThreaded: 300,
   },
 };
 
@@ -111,12 +115,20 @@ export const STARTING_LIVES = 5;
 // Per-near-miss base points and combo bumps. The combo multiplier applies to the
 // NEXT event's payout (not the current one); the bump compounds on top of the
 // running multiplier and is capped at COMBO_CAP.
+//
+// THREADED requires an ACTIVE hop into the vehicle's wheelbase as it passes —
+// the player has to time a jump between the wheels. SCORE_THREADED is the
+// fallback for types that don't define `scoreThreaded` (see VEHICLE_TYPES);
+// smaller vehicles override with a higher payout because their wheelbase gap
+// is harder to land in.
+//
+// UNDER is the passive cousin: the frog was sitting between the wheel rows when
+// the vehicle drove overhead. No hop required, so the bonus is small.
 export const SCORE_THREADED = 300;
+export const SCORE_UNDER = 25;
 export const SCORE_GRAZED = 100;
-export const SCORE_CLOSE = 25;
 export const COMBO_BUMP_THREADED = 2.0;
 export const COMBO_BUMP_GRAZED = 1.5;
-export const COMBO_BUMP_CLOSE = 1.2;
 export const COMBO_BUMP_BUG = 1.5;
 export const COMBO_CAP = 8;
 export const COMBO_DECAY_DELAY = 3.0;        // seconds idle before decay starts
@@ -132,7 +144,6 @@ export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
 
 // Near-miss proximity (used by collision.detectNearMisses).
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
-export const CLOSE_RADIUS = 1.5;             // m — body-center X distance for CLOSE tier
 
 export const HIGH_SCORE_KEY = 'frogger.highscore';
 

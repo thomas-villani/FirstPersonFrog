@@ -1,4 +1,4 @@
-import { FROG_HITBOX, GRAZE_RADIUS, CLOSE_RADIUS, LANE_WIDTH } from './config.js';
+import { FROG_HITBOX, GRAZE_RADIUS, SUB_ROWS_PER_LANE } from './config.js';
 
 // Continuous AABB collision against each vehicle's 4 wheels.
 // Mid-hop is NOT invincible — a wheel passing through the frog's actual world position
@@ -32,68 +32,86 @@ export function checkCollision(frog, vehicles) {
 // --- Near-miss detection (PLAN_SCORING §4.1) -------------------------------
 //
 // Three tiers, in descending value:
-//   THREADED — frog inside the vehicle's body footprint, strict (between front/rear
-//              axles in X AND strictly between the two wheel-track rows in Z).
-//              This is the "wheelbase thread" — the survivable gap.
-//   GRAZED   — any wheel within frog hitbox edge + GRAZE_RADIUS.
-//   CLOSE    — body-center within CLOSE_RADIUS in X AND within ~one lane-width in Z.
+//   THREADED — frog actively HOPPED through one of this vehicle's wheel-row
+//              lines (start row OR end row matched a wheelRow) while its X was
+//              inside the vehicle's wheelbase. The "jump between the wheels"
+//              skill play. Fires INDEPENDENTLY of UNDER (the frog may end up
+//              on the wheel-row line, where UNDER's strict Z check fails).
+//   UNDER    — vehicle body footprint over the frog AND frog Z strictly between
+//              the wheel-row lines. Passive: small bonus for the body driving
+//              over you while you're in the safe Z gap.
+//   GRAZED   — any wheel within frog hitbox edge + GRAZE_RADIUS. Suppressed
+//              when frog is on safe ground (start, goal, or a between-lane
+//              stripe), since stripes are designed to be wheel-free.
 //
 // Each frame we compute approachingSign = (v.x - frog.x) * -v.direction.
 //   > 0: approaching   <= 0: at/past
-// We track each vehicle's max tier during the current approach, and fire one event
-// per approach when the sign transitions positive → non-positive. Tier is then
-// reset, so a frog who hops sideways back into a passed vehicle's path can earn a
-// fresh near-miss on the second pass.
+// We track each vehicle's max base tier during the approach plus a separate
+// `threadedHop` flag, and fire one event per approach when the sign transitions
+// positive → non-positive. THREADED supersedes any base tier when set.
 
-const TIER_RANK = { CLOSE: 1, GRAZED: 2, THREADED: 3 };
+const TIER_RANK = { GRAZED: 1, UNDER: 2 };
 
 function tierRank(t) {
   return t ? TIER_RANK[t] : 0;
 }
 
-function evaluateTier(frog, v) {
+// Frog is on safe ground when not in a wheel-row sub-row: the start row, the
+// goal row, or any between-lane stripe (last sub-row of each lane, where
+// `row % SUB_ROWS_PER_LANE === 0`). Mirrors the inTraffic check in game.js.
+function isOnSafeGround(frog) {
+  return (
+    frog.row <= 0 ||
+    frog.row >= frog.goalRow ||
+    frog.row % SUB_ROWS_PER_LANE === 0
+  );
+}
+
+function evaluateTier(frog, v, onSafeGround) {
   const fx = frog.group.position.x;
   const fz = frog.group.position.z;
   const fHalf = FROG_HITBOX / 2;
 
-  // THREADED — inside body footprint, strict. Body width matches wheel-track
-  // span, so this is equivalent to "between the wheel-row lines in Z".
+  // UNDER — vehicle body over the frog AND frog Z strictly between the two
+  // wheel-row lines (i.e., in the no-wheel strip). Body width matches wheel-track
+  // span, so the Z check IS "between the wheel-row lines".
   const bodyHalfL = v.length / 2;
   const bodyHalfW = v.width / 2;
   if (Math.abs(v.x - fx) < bodyHalfL && Math.abs(v.z - fz) < bodyHalfW) {
-    return 'THREADED';
+    return 'UNDER';
   }
 
   // GRAZED — any wheel within hitbox edge + GRAZE_RADIUS. Inflated AABB check
   // mirrors the kill-AABB in checkCollision so a kill-near-miss has the same
-  // metric basis as the kill itself.
-  const wxHalf = v.type.wheelRadius;
-  const wzHalf = v.type.wheelWidth / 2;
-  for (const w of v.wheels) {
-    const dx = Math.abs(v.x + w.localX - fx);
-    const dz = Math.abs(v.z + w.localZ - fz);
-    if (
-      dx < wxHalf + fHalf + GRAZE_RADIUS &&
-      dz < wzHalf + fHalf + GRAZE_RADIUS
-    ) {
-      return 'GRAZED';
+  // metric basis as the kill itself. Suppressed on safe ground because the
+  // between-lane stripe is wheel-free by design and shouldn't pay out for
+  // adjacent-lane wheels passing close.
+  if (!onSafeGround) {
+    const wxHalf = v.type.wheelRadius;
+    const wzHalf = v.type.wheelWidth / 2;
+    for (const w of v.wheels) {
+      const dx = Math.abs(v.x + w.localX - fx);
+      const dz = Math.abs(v.z + w.localZ - fz);
+      if (
+        dx < wxHalf + fHalf + GRAZE_RADIUS &&
+        dz < wzHalf + fHalf + GRAZE_RADIUS
+      ) {
+        return 'GRAZED';
+      }
     }
-  }
-
-  // CLOSE — body center near frog X, with a Z gate so a vehicle three lanes away
-  // doesn't fire CLOSE every time it whooshes past on the X axis.
-  if (Math.abs(v.x - fx) < CLOSE_RADIUS && Math.abs(v.z - fz) < LANE_WIDTH) {
-    return 'CLOSE';
   }
 
   return null;
 }
 
-// Returns null or an array of fired tier strings (one per vehicle that passed
-// this frame). Caller feeds them into score.addNearMiss.
+// Returns null or an array of fired events (one per vehicle that passed this
+// frame), each shaped { tier, vehicle }. Caller feeds them into
+// score.addNearMiss — the vehicle is needed because per-type scoring lets
+// smaller vehicles pay more for THREADED.
 export function detectNearMisses(frog, vehicles) {
   if (frog.state === 'DEAD') return null;
   const fx = frog.group.position.x;
+  const onSafeGround = isOnSafeGround(frog);
   let fired = null;
 
   for (const v of vehicles) {
@@ -104,19 +122,42 @@ export function detectNearMisses(frog, vehicles) {
     // Evaluate tier while approaching, plus the pass-through frame itself
     // (so a body crossover that completes exactly when sign hits 0 still counts).
     if (isApproaching || wasApproaching) {
-      const cur = evaluateTier(frog, v);
+      const cur = evaluateTier(frog, v, onSafeGround);
       if (cur && tierRank(cur) > tierRank(v.nearMiss.tier)) {
         v.nearMiss.tier = cur;
       }
+      // THREADED detection: the frog HOPPED such that its trajectory engages
+      // one of THIS vehicle's wheel-row lines, while its X is between the front
+      // and rear axles. Each hop is exactly 1 sub-row, so the only way to
+      // "pass through" a wheel-row line is for the start row or end row to
+      // equal that line. Sideways hops and forward hops entirely inside the
+      // safe Z gap don't qualify — they touch no wheel-row.
+      if (frog.state === 'HOPPING') {
+        const wheelbaseHalfL = v.length / 2 - v.type.wheelRadius * 2;
+        if (wheelbaseHalfL > 0 && Math.abs(v.x - fx) < wheelbaseHalfL) {
+          if (
+            v.wheelRows.includes(frog.prevRow) ||
+            v.wheelRows.includes(frog.row)
+          ) {
+            v.nearMiss.threadedHop = true;
+          }
+        }
+      }
     }
 
-    // Fire on transition from approaching → past, then re-arm.
+    // Fire on transition from approaching → past, then re-arm. THREADED wins
+    // outright when set — the frog earned the active skill bonus regardless
+    // of whatever passive tier was also tracked.
     if (wasApproaching && !isApproaching) {
-      if (v.nearMiss.tier) {
+      let firedTier = null;
+      if (v.nearMiss.threadedHop) firedTier = 'THREADED';
+      else if (v.nearMiss.tier) firedTier = v.nearMiss.tier;
+      if (firedTier) {
         if (!fired) fired = [];
-        fired.push(v.nearMiss.tier);
+        fired.push({ tier: firedTier, vehicle: v });
       }
       v.nearMiss.tier = null;
+      v.nearMiss.threadedHop = false;
     }
 
     v.nearMiss.lastSign = sign;

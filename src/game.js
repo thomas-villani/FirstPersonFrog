@@ -204,13 +204,15 @@ export class Game {
     // wheel-row) still records the GRAZED that preceded it.
     const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
     if (nearMisses) {
-      for (const tier of nearMisses) {
+      for (const { tier, vehicle } of nearMisses) {
         const before = this.score.pending;
-        this.score.addNearMiss(tier);
-        if (tier === 'THREADED') {
-          const earned = this.score.pending - before;
-          this.hud.showMilestoneToast(`THREADED! +${earned.toLocaleString()}`);
-        }
+        this.score.addNearMiss(tier, vehicle);
+        const earned = this.score.pending - before;
+        const label =
+          tier === 'THREADED' ? `THREADED! +${earned.toLocaleString()}` :
+          tier === 'UNDER'    ? `UNDER +${earned.toLocaleString()}` :
+          tier === 'GRAZED'   ? `GRAZED +${earned.toLocaleString()}` : null;
+        if (label) this.hud.showMilestoneToast(label);
       }
     }
 

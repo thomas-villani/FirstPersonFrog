@@ -1,11 +1,10 @@
 import {
   STARTING_LIVES,
   SCORE_THREADED,
+  SCORE_UNDER,
   SCORE_GRAZED,
-  SCORE_CLOSE,
   COMBO_BUMP_THREADED,
   COMBO_BUMP_GRAZED,
-  COMBO_BUMP_CLOSE,
   COMBO_BUMP_BUG,
   COMBO_CAP,
   COMBO_DECAY_DELAY,
@@ -92,11 +91,22 @@ export class Score {
   }
 
   // Near-miss event. tier ∈ {'THREADED','GRAZED','CLOSE'}. (Wired in S2.)
-  addNearMiss(tier) {
+  // `vehicle` is the source vehicle — its type's `scoreThreaded` overrides the
+  // SCORE_THREADED default so smaller vehicles pay more for a thread.
+  addNearMiss(tier, vehicle) {
+    // UNDER is a passive flat bonus — doesn't apply or bump the combo, doesn't
+    // reset the idle timer. Without this, sitting in a safe Z gap while traffic
+    // streams overhead would farm combo for free.
+    if (tier === 'UNDER') {
+      this.pending += SCORE_UNDER;
+      return;
+    }
     let base, bump;
-    if (tier === 'THREADED') { base = SCORE_THREADED; bump = COMBO_BUMP_THREADED; }
+    if (tier === 'THREADED') {
+      base = vehicle?.type?.scoreThreaded ?? SCORE_THREADED;
+      bump = COMBO_BUMP_THREADED;
+    }
     else if (tier === 'GRAZED') { base = SCORE_GRAZED; bump = COMBO_BUMP_GRAZED; }
-    else if (tier === 'CLOSE')  { base = SCORE_CLOSE;  bump = COMBO_BUMP_CLOSE; }
     else return;
     this.pending += Math.round(base * this.combo);
     this.combo = Math.min(COMBO_CAP, this.combo * bump);

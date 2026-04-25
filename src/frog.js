@@ -27,6 +27,7 @@ export class Frog {
     this.group.add(camera);
 
     this.row = START_ROW;
+    this.prevRow = START_ROW;
     this.cellX = 0;
     this.goalRow = goalRow;
     this.state = 'IDLE';
@@ -52,6 +53,7 @@ export class Frog {
 
   _respawn() {
     this.row = START_ROW;
+    this.prevRow = START_ROW;
     this.cellX = 0;
     this._applyGridPosition();
     this.state = 'IDLE';
@@ -60,6 +62,7 @@ export class Frog {
   // Reset to start without a death (e.g. after crossing).
   resetToStart() {
     this.row = START_ROW;
+    this.prevRow = START_ROW;
     this.cellX = 0;
     this._applyGridPosition();
     this.state = 'IDLE';
@@ -81,6 +84,7 @@ export class Frog {
     this._hopStart.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
     this._hopEnd.set(cellXToWorldX(newCell), 0, rowToZ(newRow));
     this._hopElapsed = 0;
+    this.prevRow = this.row;
     this.row = newRow;
     this.cellX = newCell;
     this.state = 'HOPPING';
