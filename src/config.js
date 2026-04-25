@@ -206,6 +206,35 @@ export const TONGUE_FLICK_DURATION = 0.18;     // extend (0..0.35) → hold (0.3
 export const BUG_MAGNET_RADIUS = 3.0;
 export const BUG_MAGNET_DRIFT_SPEED = 0.5;
 
+// --- Frog Focus (Lv 3 unlock) ---
+// Shift-hold time-slow. Vehicles, spawner, and engine pitch slow to
+// WORLD_TIME_SCALE_FOCUS; frog hop and input run at normal speed (the player's edge).
+// Meter fills on near-miss / bug events and drains while held.
+// Tier-indexed durations: index 0 = locked; T1=3s, T2=4s, T3=5s.
+export const FOCUS_DURATIONS = [0, 3, 4, 5];
+export const WORLD_TIME_SCALE_FOCUS = 0.35;
+export const FOCUS_NEAR_MISS_MULT = 2;       // base score multiplier on near-miss while focused
+export const FOCUS_FILL_THREADED = 0.4;
+export const FOCUS_FILL_GRAZED = 0.2;
+export const FOCUS_FILL_BUG = 0.15;
+export const FOCUS_ENGINE_LOWPASS_HZ = 350;  // engine voices LP cutoff while focused (default 800)
+
+// --- Recombobulation (Lv 4 unlock) ---
+// Charges absorb a fatal hit instead of consuming a life. Splat → unsplat cutscene
+// plays; frog resumes at the same row+cellX it died on. Charges are awarded only
+// on tier-up (additive, capped per tier). Used charges stay used until next tier-up.
+export const RECOMB_CHARGES_BY_TIER = [0, 1, 2, 3];   // cap by tier (0 = locked)
+export const RECOMB_GRANT_BY_TIER   = [0, 1, 2, 3];   // +N awarded on tier-up, clamped to cap
+export const RECOMB_CUTSCENE_DURATION = 1.5;          // s — total cutscene length
+export const RECOMB_SQUASH_DURATION  = 0.35;          // s — splat-down phase
+export const RECOMB_HOLD_DURATION    = 0.30;          // s — flat hold
+
+// --- Long Jump (Lv 5 unlock) ---
+// Ctrl + WASD multiplies hop distance. Tier 0 = locked, T1 = 2×, T2 = 3×, T3 = 4×.
+// Same HOP_DURATION → effective velocity scales with tier; arc height scales by sqrt(tier).
+// Long hops clamp to playfield edges instead of being rejected.
+export const LONG_JUMP_TIERS = [1, 2, 3, 4];
+
 // --- Audio ---
 export const APPROACH_PITCH = 0.35;          // max playbackRate bump for a closing vehicle
 export const MAX_AUDIBLE_DISTANCE = 60;      // meters, beyond this engine gain is 0

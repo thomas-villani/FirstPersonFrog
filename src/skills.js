@@ -15,6 +15,9 @@ const UNLOCK_TABLE = [
   // Lv 1 is the empty baseline — no skills. Backward hop is unconditional in
   // input.js (not gated). Tongue T1 is the first earned skill.
   { level: 2, skill: 'tongueFlick', tier: 1 },
+  { level: 3, skill: 'frogFocus', tier: 1 },
+  { level: 4, skill: 'recombobulation', tier: 1 },
+  { level: 5, skill: 'longJump', tier: 1 },
   { level: 6, skill: 'tongueFlick', tier: 2 },
   { level: 12, skill: 'tongueFlick', tier: 3 },
 ];
@@ -24,6 +27,9 @@ const TOAST_LABELS = {
   'tongueFlick:1': 'Tongue Flick',
   'tongueFlick:2': 'Tongue Flick II',
   'tongueFlick:3': 'Tongue Flick III + Bug Magnet',
+  'frogFocus:1': 'Frog Focus (Shift)',
+  'recombobulation:1': 'Recombobulation',
+  'longJump:1': 'Long Jump (Ctrl)',
 };
 
 export class Skills {

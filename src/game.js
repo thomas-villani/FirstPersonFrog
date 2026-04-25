@@ -8,6 +8,7 @@ import { AudioManager } from './audio.js';
 import { checkCollision, detectNearMisses } from './collision.js';
 import { Score } from './score.js';
 import { DeathCutscene } from './death.js';
+import { RecombCutscene } from './recomb.js';
 import { Skills, levelUpLabel } from './skills.js';
 import { BugManager } from './bugs.js';
 import { Tongue } from './tongue.js';
@@ -20,18 +21,25 @@ import {
   INTRO_START_POS,
   SPEED_RAMP_PER_LEVEL,
   SUB_ROWS_PER_LANE,
+  WORLD_TIME_SCALE_FOCUS,
+  FOCUS_DURATIONS,
+  RECOMB_CHARGES_BY_TIER,
+  RECOMB_GRANT_BY_TIER,
   laneCountForLevel,
   goalRowForLevel,
   buildLanesForLevel,
 } from './config.js';
 
 // State machine:
-//   'PAUSED'   — overlay shown, no updates running.
-//   'INTRO'    — first-time cinematic flythrough from top-down to frog POV.
-//   'PLAYING'  — normal gameplay.
-//   'DYING'    — 3rd-person splat cutscene after a fatal hit (lives > 0). World
-//                is frozen for the duration; cutscene owns the camera.
-//   'GAMEOVER' — out of lives; overlay shown with final score; click for new run.
+//   'PAUSED'         — overlay shown, no updates running.
+//   'INTRO'          — first-time cinematic flythrough from top-down to frog POV.
+//   'PLAYING'        — normal gameplay.
+//   'DYING'          — 3rd-person splat cutscene after a fatal hit (lives > 0).
+//                      World is frozen for the duration; cutscene owns the camera.
+//   'RECOMBOBULATING'— splat → unsplat cutscene after a fatal hit absorbed by a
+//                      recomb charge. World keeps rolling; cutscene owns the camera;
+//                      frog row/cellX are preserved so play resumes at the impact.
+//   'GAMEOVER'       — out of lives; overlay shown with final score; click for new run.
 //
 // Each successful crossing tears down the world and rebuilds it for the new level —
 // `_buildLevel` reconstructs the scene, frog, and spawner so lane count and direction
@@ -76,7 +84,15 @@ export class Game {
     this._introLook = new THREE.Vector3();
     this._introFrogMesh = null;
     this.deathCutscene = null;
+    this.recombCutscene = null;
     this._pendingGameOver = false;
+
+    // Frog Focus: rising/falling-edge tracking + DOM tint handle.
+    this._focusActive = false;
+    this.fxFocusEl = document.getElementById('focus-tint');
+
+    // Recombobulation: highest tier seen this run. Drives one-shot tier-up grants.
+    this._recombTierLast = 0;
 
     this._buildLevel(1);
 
@@ -138,6 +154,9 @@ export class Game {
       this.skills.update(this.score.frogLevel);
       this._levelUpToastQueue.length = 0;
       this._levelUpToastTimer = 0;
+      this._recombTierLast = 0;
+      this._focusActive = false;
+      if (this.fxFocusEl) this.fxFocusEl.style.opacity = '0';
       this.hud.resetForNewRun();
       this.hud.renderHighScore(this.score.highScore);
       this._buildLevel(1);
@@ -152,9 +171,12 @@ export class Game {
     // Game-over state was set in `update()` before the pointer-lock exit fired —
     // don't clobber it back to PAUSED, and leave the GAME OVER overlay text intact.
     // If we lose pointer lock mid-cutscene, snap to its end so resume goes
-    // straight back to PLAYING from the start row instead of resuming a
-    // half-finished splat with a detached camera.
+    // straight back to PLAYING from the start row (or impact row, for recomb)
+    // instead of resuming a half-finished cutscene with a detached camera.
     if (this.state === 'DYING') this._finishDeathCutscene();
+    else if (this.state === 'RECOMBOBULATING') this._finishRecombCutscene();
+    // Drop focus on lock loss so the world isn't stuck in slow-mo on resume.
+    if (this._focusActive) this._setFocusActive(false);
     if (this.state !== 'GAMEOVER') {
       this.state = 'PAUSED';
       this.hud.showPause();
@@ -192,6 +214,63 @@ export class Game {
     this.camera.rotation.set(0, 0, 0);
     this.input.resetLook();
     this.hasIntroPlayed = true;
+    this.state = 'PLAYING';
+  }
+
+  // Centralizes Frog Focus on/off transitions so all the side-effects (audio
+  // sweep, score flag, DOM tint, SFX sting) stay in lockstep with `_focusActive`.
+  _setFocusActive(active) {
+    if (this._focusActive === active) return;
+    this._focusActive = active;
+    this.score.setFocusActive(active);
+    this.audio.setFocusFilter(active, this.spawner.vehicles);
+    if (this.fxFocusEl) this.fxFocusEl.style.opacity = active ? '1' : '0';
+    if (active) this.audio.playFocusOn();
+    else this.audio.playFocusOff();
+  }
+
+  // Apply Recombobulation tier-up grants. Called after every `skills.update`.
+  // Charges are awarded ONLY on tier-up: T1 grants +1, T2 grants +2, T3 grants +3,
+  // each clamped to the new tier's cap. Used charges stay used until next tier-up.
+  _applyRecombGrants() {
+    const newTier = this.skills.tier('recombobulation');
+    if (newTier <= this._recombTierLast) return;
+    for (let t = this._recombTierLast + 1; t <= newTier; t++) {
+      const grant = RECOMB_GRANT_BY_TIER[t] ?? 0;
+      const cap = RECOMB_CHARGES_BY_TIER[t] ?? 0;
+      this.score.recombCharges = Math.min(cap, this.score.recombCharges + grant);
+    }
+    this._recombTierLast = newTier;
+    this.hud.renderRecombCharges(this.score.recombCharges, newTier);
+  }
+
+  _beginRecombCutscene() {
+    this.state = 'RECOMBOBULATING';
+    // Drop focus immediately if it was active — slow-mo through the cutscene
+    // would feel wrong, and the falling-edge audio sweep should fire now.
+    if (this._focusActive) this._setFocusActive(false);
+    // Wipe per-vehicle near-miss state — same correctness need as the death
+    // cutscene path: a half-built approach shouldn't pay out after un-splat.
+    for (const v of this.spawner.vehicles) {
+      v.nearMiss.tier = null;
+      v.nearMiss.threadedHop = false;
+      v.nearMiss.lastSign = 0;
+    }
+    this.recombCutscene = new RecombCutscene(this.scene, this.camera, this.frog);
+    this.audio.playRecombobulate();
+    this.hud.showMilestoneToast('RECOMBOBULATED!');
+    this.hud.renderRecombCharges(this.score.recombCharges, this.skills.tier('recombobulation'));
+  }
+
+  _finishRecombCutscene() {
+    if (!this.recombCutscene) return;
+    this.recombCutscene.cleanup();
+    this.recombCutscene = null;
+    this.input.resetLook();
+    // Frog row/cellX never changed. If the hit happened mid-hop the group is
+    // partway through an arc — snap it back to the committed cell so the
+    // reattached camera sits at the right height.
+    this.frog.resumeAtRest();
     this.state = 'PLAYING';
   }
 
@@ -244,6 +323,17 @@ export class Game {
       return;
     }
 
+    if (this.state === 'RECOMBOBULATING') {
+      // World keeps rolling: vehicles continue, engines audible. The cutscene
+      // owns the camera and animates a placeholder splat → unsplat. When done,
+      // the frog reappears at the unchanged row/cellX.
+      this.spawner.update(dt);
+      this.audio.updateEngines(this.frog, this.spawner.vehicles);
+      const done = this.recombCutscene.update(dt);
+      if (done) this._finishRecombCutscene();
+      return;
+    }
+
     if (this.state === 'INTRO') {
       this._introElapsed += dt;
       const t = Math.min(this._introElapsed / INTRO_DURATION, 1);
@@ -269,11 +359,28 @@ export class Game {
     }
 
     // PLAYING
+    // Frog + tongue + input + score combo decay run at full speed (the player's
+    // edge during Frog Focus). Spawner + bugs + audio engines run at scaled dt.
+    const focusTier = this.skills.tier('frogFocus');
+    const focusUnlocked = focusTier > 0;
+    const focusOn = focusUnlocked && this.input.shiftHeld && this.score.focusMeter > 0;
+    if (focusOn !== this._focusActive) this._setFocusActive(focusOn);
+    const scale = focusOn ? WORLD_TIME_SCALE_FOCUS : 1;
+    const dtScaled = dt * scale;
+
     this.frog.update(dt);
-    this.spawner.update(dt);
-    this.bugs.update(dt);
+    this.spawner.update(dtScaled);
+    this.bugs.update(dtScaled);
     this.tongue.update(dt);
     this._pumpLevelUpToasts(dt);
+
+    // Drain the focus meter at REAL time — the cost should bite even though
+    // the world is slowed. When it hits 0, falling-edge fires next frame.
+    if (focusOn) {
+      const dur = FOCUS_DURATIONS[focusTier] ?? 3;
+      this.score.drainFocusMeter(dt, dur);
+    }
+    this.hud.renderFocusMeter(this.score.focusMeter, focusUnlocked);
 
     // In-traffic = on a wheel-row sub-row. Excludes start (row 0), goal, the
     // safe between-lane stripes (every SUB_ROWS_PER_LANE-th row), and DEAD frame.
@@ -293,15 +400,21 @@ export class Game {
     // approaches don't resolve on the first frame after respawn.
     const hit = checkCollision(this.frog, this.spawner.vehicles);
     if (hit) {
-      const isGameOver = this.score.onDeath();
-      this.frog.die();
-      this.audio.playSquish();
-      this.hud.onDeath();
-      this.hud.renderLives(this.score.lives);
-      this.hud.renderHighScore(this.score.highScore);
-      // Always run the splat cutscene — even on the final life. The GAMEOVER
-      // overlay is shown by _finishDeathCutscene once the splat completes.
-      this._beginDeathCutscene(hit, isGameOver);
+      // Recombobulation intercepts a fatal hit if the player has charges. No
+      // life lost; cutscene plays splat → unsplat; frog resumes at impact.
+      if (this.score.consumeRecombCharge()) {
+        this._beginRecombCutscene();
+      } else {
+        const isGameOver = this.score.onDeath();
+        this.frog.die();
+        this.audio.playSquish();
+        this.hud.onDeath();
+        this.hud.renderLives(this.score.lives);
+        this.hud.renderHighScore(this.score.highScore);
+        // Always run the splat cutscene — even on the final life. The GAMEOVER
+        // overlay is shown by _finishDeathCutscene once the splat completes.
+        this._beginDeathCutscene(hit, isGameOver);
+      }
     } else {
       // Near-miss events fire one per vehicle on the approach→pass transition.
       const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
@@ -331,6 +444,10 @@ export class Game {
             const label = levelUpLabel(newLevel) ?? `FROG LEVEL ${newLevel}`;
             this._levelUpToastQueue.push(label);
           }
+          // Recomb charges are awarded only on tier-up. Run after all level-ups
+          // for this crossing so a 0→2 jump in a single bank only grants once
+          // for each tier crossed (T1 grant + T2 grant), capped at T2 max.
+          this._applyRecombGrants();
           this.audio.playLevelUp();
         }
         const newLevel = this.hud.onWin();
@@ -342,7 +459,7 @@ export class Game {
     this.hud.renderScore(this.score.totalScore());
     this.hud.renderCombo(this.score.combo);
     this.hud.renderFrogLevel(this.score.frogLevel, this.score.xp);
-    this.audio.updateEngines(this.frog, this.spawner.vehicles);
+    this.audio.updateEngines(this.frog, this.spawner.vehicles, scale);
   }
 
   // Show queued level-up toasts one at a time, spaced 0.45s apart so multiple

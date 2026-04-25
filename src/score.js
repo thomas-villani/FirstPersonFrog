@@ -16,6 +16,10 @@ import {
   HIGH_SCORE_KEY,
   XP_PER_LEVEL_BASE,
   FROG_LEVEL_CAP,
+  FOCUS_NEAR_MISS_MULT,
+  FOCUS_FILL_THREADED,
+  FOCUS_FILL_GRAZED,
+  FOCUS_FILL_BUG,
 } from './config.js';
 
 // Cumulative XP required to BE at frog level N. Lv 1 = 0, Lv 2 = 500, Lv 3 = 1500.
@@ -48,6 +52,14 @@ export class Score {
     this.xp = 0;
     this.frogLevel = 1;
     this._levelUpQueue = [];
+
+    // Frog Focus (Lv 3+). Game owns the on/off transitions and drain timing;
+    // Score owns the meter value (single source for HUD + scoring).
+    this.focusMeter = 0;
+    this.focusActive = false;
+
+    // Recombobulation (Lv 4+). Charges intercept a fatal hit. Awarded on tier-up.
+    this.recombCharges = 0;
   }
 
   reset() {
@@ -63,6 +75,9 @@ export class Score {
     this.xp = 0;
     this.frogLevel = 1;
     this._levelUpQueue.length = 0;
+    this.focusMeter = 0;
+    this.focusActive = false;
+    this.recombCharges = 0;
   }
 
   totalScore() {
@@ -113,27 +128,37 @@ export class Score {
     }
   }
 
-  // Near-miss event. tier ∈ {'THREADED','GRAZED','CLOSE'}. (Wired in S2.)
+  // Near-miss event. tier ∈ {'THREADED','UNDER','GRAZED'}. (Wired in S2.)
   // `vehicle` is the source vehicle — its type's `scoreThreaded` overrides the
   // SCORE_THREADED default so smaller vehicles pay more for a thread.
+  // While Frog Focus is active (Lv 3+), THREADED/GRAZED base is multiplied by
+  // FOCUS_NEAR_MISS_MULT and the focus meter fills proportional to event tier.
   addNearMiss(tier, vehicle) {
     // UNDER is a passive flat bonus — doesn't apply or bump the combo, doesn't
     // reset the idle timer. Without this, sitting in a safe Z gap while traffic
-    // streams overhead would farm combo for free.
+    // streams overhead would farm combo for free. UNDER also doesn't fill the
+    // focus meter (passive, not a skill expression).
     if (tier === 'UNDER') {
       this.pending += SCORE_UNDER;
       return;
     }
-    let base, bump;
+    let base, bump, fill;
     if (tier === 'THREADED') {
       base = vehicle?.type?.scoreThreaded ?? SCORE_THREADED;
       bump = COMBO_BUMP_THREADED;
+      fill = FOCUS_FILL_THREADED;
     }
-    else if (tier === 'GRAZED') { base = SCORE_GRAZED; bump = COMBO_BUMP_GRAZED; }
+    else if (tier === 'GRAZED') {
+      base = SCORE_GRAZED;
+      bump = COMBO_BUMP_GRAZED;
+      fill = FOCUS_FILL_GRAZED;
+    }
     else return;
+    if (this.focusActive) base *= FOCUS_NEAR_MISS_MULT;
     this.pending += Math.round(base * this.combo);
     this.combo = Math.min(COMBO_CAP, this.combo * bump);
     this._comboIdle = 0;
+    this.focusMeter = Math.min(1, this.focusMeter + fill);
   }
 
   // Bug pickup. (Wired in S3.)
@@ -141,6 +166,30 @@ export class Score {
     this.pending += Math.round(SCORE_BUG_BASE * this.combo);
     this.combo = Math.min(COMBO_CAP, this.combo * COMBO_BUMP_BUG);
     this._comboIdle = 0;
+    this.focusMeter = Math.min(1, this.focusMeter + FOCUS_FILL_BUG);
+  }
+
+  // Game owns on/off transitions; Score just stores the flag so addNearMiss can
+  // see it without the game.js → score.js call needing to thread state through.
+  setFocusActive(active) {
+    this.focusActive = active;
+  }
+
+  // Drain the meter while focus is held. `dt` is real wall-clock time — meter
+  // costs the player real seconds, not slowed-world seconds. `duration` is the
+  // tier-scaled focus duration in seconds. Returns true when meter hits 0.
+  drainFocusMeter(dt, duration) {
+    if (duration <= 0) return true;
+    this.focusMeter = Math.max(0, this.focusMeter - dt / duration);
+    return this.focusMeter <= 0;
+  }
+
+  // Consume one Recombobulation charge if available. Returns true on success.
+  // Doesn't touch lives — recomb is the alternative to losing a life.
+  consumeRecombCharge() {
+    if (this.recombCharges <= 0) return false;
+    this.recombCharges--;
+    return true;
   }
 
   // On crossing — bank pending into total, reset per-level state. Returns the
@@ -156,6 +205,7 @@ export class Score {
     this._comboIdle = 0;
     this.inTrafficSeconds = 0;
     this._milestonesFired = 0;
+    this.focusMeter = 0;
 
     // XP threshold check. A high-combo crossing on a high level can cross
     // multiple thresholds at once; queue them all so the HUD can show one
@@ -179,6 +229,8 @@ export class Score {
     this._comboIdle = 0;
     this.inTrafficSeconds = 0;
     this._milestonesFired = 0;
+    this.focusMeter = 0;
+    this.focusActive = false;
     if (this.lives <= 0) {
       this.gameOver = true;
       if (this.banked > this.highScore) {

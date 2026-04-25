@@ -19,6 +19,10 @@ export class Hud {
     this.livesEl = document.getElementById('lives-icons');
     this.frogLevelEl = document.getElementById('frog-level');
     this.xpFillEl = document.getElementById('xp-bar-fill');
+    this.focusRowEl = document.getElementById('focus-row');
+    this.focusFillEl = document.getElementById('focus-bar-fill');
+    this.recombRowEl = document.getElementById('recomb-row');
+    this.recombChargesEl = document.getElementById('recomb-charges');
 
     this.overlay = document.getElementById('overlay');
     this.overlayLabel = this.overlay.querySelector('div');
@@ -37,6 +41,8 @@ export class Hud {
     this.renderHighScore(0);
     this.renderCombo(1);
     this.renderFrogLevel(1, 0);
+    this.renderFocusMeter(0, false);
+    this.renderRecombCharges(0, 0);
     this._renderNearMisses();
   }
 
@@ -83,6 +89,32 @@ export class Hud {
     this.frogLevelEl.textContent =
       `FROG Lv ${frogLevel} (${xp.toLocaleString()} / ${next.toLocaleString()})`;
     this.xpFillEl.style.width = `${pct}%`;
+  }
+
+  // Bottom-center focus meter — only visible once Frog Focus is unlocked (Lv 3+).
+  // `fill` is normalized [0, 1]; `unlocked` toggles the row's visibility.
+  renderFocusMeter(fill, unlocked) {
+    if (!this.focusRowEl || !this.focusFillEl) return;
+    if (!unlocked) {
+      this.focusRowEl.style.display = 'none';
+      return;
+    }
+    this.focusRowEl.style.display = 'block';
+    const pct = Math.max(0, Math.min(100, Math.round(fill * 100)));
+    this.focusFillEl.style.width = `${pct}%`;
+  }
+
+  // Row of beetle icons matching held Recombobulation charges. Hidden while
+  // Recomb is locked (tier === 0). Tier param lets us still show "0" when
+  // unlocked-but-empty so the player remembers they earned it.
+  renderRecombCharges(charges, tier) {
+    if (!this.recombRowEl || !this.recombChargesEl) return;
+    if (tier <= 0) {
+      this.recombRowEl.style.display = 'none';
+      return;
+    }
+    this.recombRowEl.style.display = 'block';
+    this.recombChargesEl.textContent = '🪲'.repeat(Math.max(0, charges));
   }
 
   // Gold-tinted toast for skill unlocks. Same fade pattern as milestone toast,
@@ -169,6 +201,8 @@ export class Hud {
     this.renderScore(0);
     this.renderCombo(1);
     this.renderFrogLevel(1, 0);
+    this.renderFocusMeter(0, false);
+    this.renderRecombCharges(0, 0);
     if (this.milestoneEl) this.milestoneEl.style.opacity = '0';
     if (this.toastEl) this.toastEl.style.opacity = '0';
     if (this.levelUpEl) this.levelUpEl.style.opacity = '0';

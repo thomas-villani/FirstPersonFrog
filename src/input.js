@@ -1,4 +1,4 @@
-import { PITCH_CLAMP } from './config.js';
+import { PITCH_CLAMP, LONG_JUMP_TIERS } from './config.js';
 
 // Owns keyboard, pointer lock, mouse-look, and the click-to-start overlay.
 // Hard-commit model: the frog itself rejects keypresses while mid-hop. We additionally
@@ -21,13 +21,22 @@ export class Input {
     this.overlay = document.getElementById('overlay');
     this.canvas = document.getElementById('canvas');
 
+    // Modifier-held flags for skill input (Shift = Frog Focus, Ctrl = Long Jump).
+    // Read off the raw event each tick — no separate keyup tracking needed for
+    // hold-state correctness, and `e.shiftKey` / `e.ctrlKey` are reset cleanly
+    // when focus changes (no stuck-modifier bugs after pointer-lock loss).
+    this.shiftHeld = false;
+    this.ctrlHeld = false;
+
     this._onKeyDown = this._onKeyDown.bind(this);
+    this._onKeyUp = this._onKeyUp.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onMouseDown = this._onMouseDown.bind(this);
     this._onOverlayClick = this._onOverlayClick.bind(this);
     this._onPointerLockChange = this._onPointerLockChange.bind(this);
 
     window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
     document.addEventListener('mousemove', this._onMouseMove);
     document.addEventListener('mousedown', this._onMouseDown);
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
@@ -43,26 +52,34 @@ export class Input {
   }
 
   _onKeyDown(e) {
+    // Track modifiers BEFORE the repeat guard — held-key state must update on
+    // every keydown so a re-pressed Shift after a pointer-lock loss recovers.
+    this.shiftHeld = e.shiftKey;
+    this.ctrlHeld = e.ctrlKey;
+
     if (e.repeat) return;
     if (this.game.state !== 'PLAYING') return;
     const frog = this.game.frog;
     const { forward, right } = this._facingAxes();
+    // Long Jump multiplier: Ctrl + WASD with the skill unlocked. T1 = 2× rows/cells.
+    const ljTier = this.game.skills.tier('longJump');
+    const mult = (this.ctrlHeld && ljTier > 0) ? LONG_JUMP_TIERS[ljTier] : 1;
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':
-        frog.tryHop(forward.dRow, forward.dCell);
+        frog.tryHop(forward.dRow, forward.dCell, mult);
         break;
       case 'KeyS':
       case 'ArrowDown':
-        frog.tryHop(-forward.dRow, -forward.dCell);
+        frog.tryHop(-forward.dRow, -forward.dCell, mult);
         break;
       case 'KeyA':
       case 'ArrowLeft':
-        frog.tryHop(-right.dRow, -right.dCell);
+        frog.tryHop(-right.dRow, -right.dCell, mult);
         break;
       case 'KeyD':
       case 'ArrowRight':
-        frog.tryHop(right.dRow, right.dCell);
+        frog.tryHop(right.dRow, right.dCell, mult);
         break;
       case 'Space':
         // preventDefault stops the page from scrolling on Space outside pointer-lock.
@@ -70,6 +87,12 @@ export class Input {
         this.game.tongue.flick();
         break;
     }
+  }
+
+  _onKeyUp(e) {
+    // Mirror the keydown sync. `e.shiftKey` / `e.ctrlKey` reflect post-up state.
+    this.shiftHeld = e.shiftKey;
+    this.ctrlHeld = e.ctrlKey;
   }
 
   // Snap the current yaw to one of four cardinal grid quadrants, and return the
@@ -146,12 +169,22 @@ export class Input {
     } else {
       // Game owns overlay text — set via hud.showPause / hud.showGameOver.
       this.overlay.classList.remove('hidden');
+      this._clearModifiers();
       this.game.onLockLost();
     }
   }
 
+  // Clear modifier state when pointer lock is lost — the user may release the
+  // key while unfocused, and we won't see the keyup. Called from
+  // `_onPointerLockChange` on lock loss.
+  _clearModifiers() {
+    this.shiftHeld = false;
+    this.ctrlHeld = false;
+  }
+
   dispose() {
     window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
     document.removeEventListener('mousemove', this._onMouseMove);
     document.removeEventListener('mousedown', this._onMouseDown);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);

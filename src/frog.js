@@ -36,6 +36,7 @@ export class Frog {
     this._hopStart = new THREE.Vector3();
     this._hopEnd = new THREE.Vector3();
     this._hopElapsed = 0;
+    this._hopArcMultiplier = 1; // sqrt(longjump multiplier) — taller arc on longer hops
     this._deadElapsed = 0;
     this._bobElapsed = BOB_DURATION; // start "finished"
 
@@ -68,22 +69,46 @@ export class Frog {
     this.state = 'IDLE';
   }
 
+  // Snap to the current row/cellX without changing them. Used when a hop is
+  // interrupted by Recombobulation: row/cellX were committed at hop start, but
+  // group.position is partway through the arc. Force IDLE + snap to grid so
+  // the camera reattaches at the right height.
+  resumeAtRest() {
+    this._applyGridPosition();
+    this.state = 'IDLE';
+    this._hopElapsed = 0;
+    this._hopArcMultiplier = 1;
+    this._bobElapsed = BOB_DURATION; // skip the landing bob
+  }
+
   _applyGridPosition() {
     this.group.position.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
   }
 
   // dRow: +1 forward (toward -Z / goal), -1 backward.
   // dCell: +1 right (+X), -1 left.
-  tryHop(dRow, dCell) {
+  // multiplier: Long Jump tier multiplier (default 1). Multiplies the dRow/dCell
+  //   step. Long hops CLAMP to playfield edges (so a partial long-hop lands at
+  //   the boundary instead of being rejected). The hop arc height scales with
+  //   sqrt(multiplier) so 2× distance feels noticeably bouncier without going
+  //   over the vehicle-clearance ceiling at the regular tier.
+  tryHop(dRow, dCell, multiplier = 1) {
     if (this.state !== 'IDLE') return false;
-    const newRow = this.row + dRow;
-    const newCell = this.cellX + dCell;
-    if (newRow < 0 || newRow > this.goalRow) return false;
-    if (newCell < -STRAFE_MAX || newCell > STRAFE_MAX) return false;
+    let newRow = this.row + dRow * multiplier;
+    let newCell = this.cellX + dCell * multiplier;
+    // Clamp instead of reject. Equivalent to the old reject behavior at single-
+    // step hops (clamp + same-cell check still returns false), but lets long
+    // jumps land at the edge instead of failing entirely.
+    if (newRow < 0) newRow = 0;
+    if (newRow > this.goalRow) newRow = this.goalRow;
+    if (newCell < -STRAFE_MAX) newCell = -STRAFE_MAX;
+    if (newCell > STRAFE_MAX) newCell = STRAFE_MAX;
+    if (newRow === this.row && newCell === this.cellX) return false;
 
     this._hopStart.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
     this._hopEnd.set(cellXToWorldX(newCell), 0, rowToZ(newRow));
     this._hopElapsed = 0;
+    this._hopArcMultiplier = multiplier > 1 ? Math.sqrt(multiplier) : 1;
     this.prevRow = this.row;
     this.row = newRow;
     this.cellX = newCell;
@@ -98,10 +123,11 @@ export class Frog {
       const ease = easeInOutQuad(t);
       this.group.position.x = this._hopStart.x + (this._hopEnd.x - this._hopStart.x) * ease;
       this.group.position.z = this._hopStart.z + (this._hopEnd.z - this._hopStart.z) * ease;
-      this.group.position.y = HOP_HEIGHT * Math.sin(Math.PI * t);
+      this.group.position.y = HOP_HEIGHT * this._hopArcMultiplier * Math.sin(Math.PI * t);
       if (t >= 1) {
         this.group.position.copy(this._hopEnd);
         this.state = 'IDLE';
+        this._hopArcMultiplier = 1;
         this._bobElapsed = 0;
         if (this.onLand) this.onLand();
       }

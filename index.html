@@ -172,6 +172,70 @@
         transition: opacity 250ms ease-out;
         z-index: 5;
       }
+      /* Frog Focus tint — placeholder until S16's CA shader.
+         Cyan/green wash, fades in on Shift hold, fades out on release. */
+      #focus-tint {
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(ellipse at center,
+          rgba(80, 255, 200, 0.06) 0%,
+          rgba(40, 200, 255, 0.16) 100%);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease-out;
+        z-index: 4;
+        mix-blend-mode: screen;
+      }
+      /* Frog Focus meter — bottom-center thin horizontal bar. */
+      #focus-row {
+        position: fixed;
+        bottom: 1.6rem;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        font-size: 0.72rem;
+        letter-spacing: 0.2em;
+        opacity: 0.9;
+        text-shadow: 0 0 4px #000;
+        pointer-events: none;
+        z-index: 6;
+      }
+      #focus-row .label {
+        color: #b8e0ff;
+        margin-bottom: 0.2rem;
+        display: block;
+      }
+      #focus-bar {
+        width: 220px;
+        height: 7px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(180, 230, 255, 0.35);
+        margin: 0 auto;
+        overflow: hidden;
+      }
+      #focus-bar-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #5fffd0, #4cc8ff);
+        transition: width 100ms linear;
+      }
+      /* Recombobulation charges — beetle icons under the XP bar. */
+      #recomb-row {
+        margin-top: 0.45rem;
+        font-size: 0.85rem;
+        letter-spacing: 0.12em;
+        color: #ffcfa0;
+      }
+      #recomb-row .label {
+        font-size: 0.75rem;
+        letter-spacing: 0.18em;
+        opacity: 0.85;
+        margin-right: 0.4rem;
+      }
+      #recomb-charges {
+        font-size: 1.0rem;
+        letter-spacing: 0.05em;
+      }
     </style>
   </head>
   <body>
@@ -181,6 +245,14 @@
       <div><span class="label">LIVES</span><span id="lives-icons"></span></div>
       <div id="frog-level">FROG Lv 1 (0 / 500)</div>
       <div id="xp-bar"><div id="xp-bar-fill"></div></div>
+      <div id="recomb-row" style="display:none;">
+        <span class="label">RECOMB</span><span id="recomb-charges"></span>
+      </div>
+    </div>
+    <div id="focus-tint"></div>
+    <div id="focus-row" style="display:none;">
+      <span class="label">FOCUS</span>
+      <div id="focus-bar"><div id="focus-bar-fill"></div></div>
     </div>
     <div id="hud">
       <div class="row-score">SCORE: <span id="score">0</span></div>

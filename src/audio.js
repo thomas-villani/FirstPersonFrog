@@ -2,7 +2,10 @@ import {
   APPROACH_PITCH,
   MAX_AUDIBLE_DISTANCE,
   ENGINE_POOL_SIZE,
+  FOCUS_ENGINE_LOWPASS_HZ,
 } from './config.js';
+
+const ENGINE_LOWPASS_DEFAULT = 800;
 
 // Web Audio API wrapper. Procedural SFX (no WAV assets) so there's no asset pipeline.
 // AudioContext must be created inside a user-gesture handler — see resume().
@@ -251,7 +254,7 @@ export class AudioManager {
     osc.frequency.value = baseFreq;
     const lowpass = this.ctx.createBiquadFilter();
     lowpass.type = 'lowpass';
-    lowpass.frequency.value = 800;
+    lowpass.frequency.value = ENGINE_LOWPASS_DEFAULT;
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = 0;
     osc.connect(lowpass);
@@ -276,7 +279,10 @@ export class AudioManager {
   }
 
   // Called each frame: sets per-engine gain and pitch based on distance + approach.
-  updateEngines(frog, vehicles) {
+  // `timeScale` (default 1) multiplies the post-doppler target frequency so engines
+  // pitch-down when world-time is slowed (Frog Focus). Doppler itself is distance-
+  // based so the only change is the multiply on targetFreq.
+  updateEngines(frog, vehicles, timeScale = 1) {
     if (!this.ctx) return;
     const frogX = frog.group.position.x;
     const frogZ = frog.group.position.z;
@@ -295,9 +301,110 @@ export class AudioManager {
       const pitchMult = 1 + APPROACH_PITCH * approachingSign * distanceFactor;
 
       const targetGain = 0.22 * distanceFactor;
-      const targetFreq = v._engine.baseFreq * pitchMult;
+      const targetFreq = v._engine.baseFreq * pitchMult * timeScale;
       v._engine.osc.frequency.setTargetAtTime(targetFreq, now, smoothing);
       v._engine.gainNode.gain.setTargetAtTime(targetGain, now, smoothing);
     }
+  }
+
+  // Sweep all live engine voices' lowpass cutoff toward the focus value or back
+  // to default. Called on the rising/falling edge of Frog Focus from game.js.
+  setFocusFilter(active, vehicles) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const target = active ? FOCUS_ENGINE_LOWPASS_HZ : ENGINE_LOWPASS_DEFAULT;
+    for (const v of vehicles) {
+      if (!v._engine) continue;
+      v._engine.lowpass.frequency.setTargetAtTime(target, now, 0.05);
+    }
+  }
+
+  // Short descending whoosh on Frog Focus engage.
+  playFocusOn() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const dur = 0.18;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(280, now + dur);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + dur + 0.05);
+  }
+
+  // Short ascending whoosh on Frog Focus release.
+  playFocusOff() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const dur = 0.14;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(280, now);
+    osc.frequency.exponentialRampToValueAtTime(740, now + dur);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + dur + 0.05);
+  }
+
+  // Cartoon "boing-out, boing-in" for Recombobulation: descending sine over the
+  // squash phase, brief silence over the hold, ascending sine with a wobble over
+  // the unsplat. Total ≈ 1.4 s, leaves ~100 ms tail before the cutscene ends.
+  playRecombobulate() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // Descending boing (squash).
+    const downDur = 0.4;
+    const down = ctx.createOscillator();
+    down.type = 'triangle';
+    down.frequency.setValueAtTime(880, now);
+    down.frequency.exponentialRampToValueAtTime(180, now + downDur);
+    const downGain = ctx.createGain();
+    downGain.gain.setValueAtTime(0.0001, now);
+    downGain.gain.linearRampToValueAtTime(0.32, now + 0.02);
+    downGain.gain.exponentialRampToValueAtTime(0.0001, now + downDur);
+    down.connect(downGain);
+    downGain.connect(this.masterGain);
+    down.start(now);
+    down.stop(now + downDur + 0.05);
+
+    // Ascending boing (unsplat) with a slight LFO wobble.
+    const upStart = now + downDur + 0.3; // hold gap
+    const upDur = 0.55;
+    const up = ctx.createOscillator();
+    up.type = 'triangle';
+    up.frequency.setValueAtTime(180, upStart);
+    up.frequency.exponentialRampToValueAtTime(960, upStart + upDur);
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 18;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 25; // ±25 Hz wobble for cartoon feel
+    lfo.connect(lfoGain);
+    lfoGain.connect(up.frequency);
+    const upGain = ctx.createGain();
+    upGain.gain.setValueAtTime(0.0001, upStart);
+    upGain.gain.linearRampToValueAtTime(0.34, upStart + 0.02);
+    upGain.gain.exponentialRampToValueAtTime(0.0001, upStart + upDur);
+    up.connect(upGain);
+    upGain.connect(this.masterGain);
+    up.start(upStart);
+    lfo.start(upStart);
+    up.stop(upStart + upDur + 0.05);
+    lfo.stop(upStart + upDur + 0.05);
   }
 }
