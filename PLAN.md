@@ -210,5 +210,8 @@ Each of these is its own plan when the time comes.
 
 Open items uncovered during playtests of the MVP scaffold. Each is small enough to fold into a session, but is intentionally NOT in §7 because the MVP shipped without them.
 
+- **Scoring & Skills system.** Big enough to deserve its own plan — see [`PLAN_SCORING.md`](./PLAN_SCORING.md). Adds: combo near-miss scoring (THREADED/GRAZED/CLOSE), in-traffic survival milestones, level-start bug pickups, 5-lives + game-over flow with a high-score table, and six level-gated skills (Frog Focus, Long Jump, Echolocation, Ribbit Roar, Tongue Grab, Lick Thyself) plus a Recombobulation collectible (auto-revives on a fatal hit). Phases S1–S14.
+- **Nails on the road (later-level offensive item).** Tires blow out, vehicles swerve off the road and explode dramatically. Pure polish/comedy moment. Becomes its own plan when the scoring/skills system is in.
+- **Legend Mode** — 1-life run variant, separate high-score table.
 - **Crossing rewards beyond the level toast.** Currently a successful crossing bumps a level counter, plays a chime, ramps speeds, and rebuilds the world for the new lane count. Could add: per-level palette/fog tint shifts, new vehicle types, intermittent "rush hour" spawn bursts.
-- **Doppler/HUD danger indicator.** Engine doppler is audio-only today (`audio.js` updates pitch + gain on approach). Optional visual cue: a peripheral DOM blip or screen-edge flash when a fast vehicle is closing from behind, since the camera can't see backwards without the player turning.
+- **Doppler/HUD danger indicator** (mostly subsumed by Echolocation in the scoring/skills plan, but could appear earlier as a baseline cue).

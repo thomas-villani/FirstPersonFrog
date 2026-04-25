@@ -1,0 +1,164 @@
+import {
+  STARTING_LIVES,
+  SCORE_THREADED,
+  SCORE_GRAZED,
+  SCORE_CLOSE,
+  COMBO_BUMP_THREADED,
+  COMBO_BUMP_GRAZED,
+  COMBO_BUMP_CLOSE,
+  COMBO_BUMP_BUG,
+  COMBO_CAP,
+  COMBO_DECAY_DELAY,
+  COMBO_DECAY_TAU,
+  SURVIVAL_MILESTONES,
+  SURVIVAL_PAYOUTS,
+  SCORE_BUG_BASE,
+  CROSSING_BASE_BONUS,
+  HIGH_SCORE_KEY,
+} from './config.js';
+
+// Run-state: lives, score, combo multiplier, in-traffic survival timer, high score.
+//
+// Two score buckets: `pending` (this level, forfeit on death) and `banked` (past
+// crossings, only forfeit on game-over). The HUD renders the sum.
+//
+// Combo multiplier compounds on near-miss/bug events and decays exponentially
+// after COMBO_DECAY_DELAY of idleness. The multiplier scales the NEXT event's
+// payout, not the current one — so the first near-miss is worth its base value.
+export class Score {
+  constructor() {
+    this.highScore = loadHighScore();
+    this.lives = STARTING_LIVES;
+    this.banked = 0;
+    this.pending = 0;
+    this.combo = 1;
+    this._comboIdle = 0;
+    this.inTrafficSeconds = 0;
+    this._milestonesFired = 0;
+    this.gameOver = false;
+    this._toastQueue = [];
+  }
+
+  reset() {
+    this.lives = STARTING_LIVES;
+    this.banked = 0;
+    this.pending = 0;
+    this.combo = 1;
+    this._comboIdle = 0;
+    this.inTrafficSeconds = 0;
+    this._milestonesFired = 0;
+    this.gameOver = false;
+    this._toastQueue.length = 0;
+  }
+
+  totalScore() {
+    return this.banked + this.pending;
+  }
+
+  // Drains any queued toast events (caller renders them via HUD).
+  drainToasts() {
+    if (this._toastQueue.length === 0) return null;
+    const out = this._toastQueue.slice();
+    this._toastQueue.length = 0;
+    return out;
+  }
+
+  // Called every frame during PLAYING.
+  // `inTraffic` = frog is on a wheel-row sub-row (not start, goal, or safe stripe).
+  update(dt, inTraffic) {
+    // Combo decay after idle period.
+    this._comboIdle += dt;
+    if (this._comboIdle > COMBO_DECAY_DELAY && this.combo > 1) {
+      this.combo = 1 + (this.combo - 1) * Math.exp(-dt / COMBO_DECAY_TAU);
+      if (this.combo < 1.02) this.combo = 1;
+    }
+
+    // In-traffic survival milestones.
+    if (inTraffic) {
+      this.inTrafficSeconds += dt;
+      while (
+        this._milestonesFired < SURVIVAL_MILESTONES.length &&
+        this.inTrafficSeconds >= SURVIVAL_MILESTONES[this._milestonesFired]
+      ) {
+        const idx = this._milestonesFired;
+        const payout = SURVIVAL_PAYOUTS[idx];
+        this.pending += payout;
+        this._toastQueue.push(
+          `+${payout.toLocaleString()} SURVIVED ${SURVIVAL_MILESTONES[idx]}s`
+        );
+        this._milestonesFired++;
+      }
+    }
+  }
+
+  // Near-miss event. tier ∈ {'THREADED','GRAZED','CLOSE'}. (Wired in S2.)
+  addNearMiss(tier) {
+    let base, bump;
+    if (tier === 'THREADED') { base = SCORE_THREADED; bump = COMBO_BUMP_THREADED; }
+    else if (tier === 'GRAZED') { base = SCORE_GRAZED; bump = COMBO_BUMP_GRAZED; }
+    else if (tier === 'CLOSE')  { base = SCORE_CLOSE;  bump = COMBO_BUMP_CLOSE; }
+    else return;
+    this.pending += Math.round(base * this.combo);
+    this.combo = Math.min(COMBO_CAP, this.combo * bump);
+    this._comboIdle = 0;
+  }
+
+  // Bug pickup. (Wired in S3.)
+  addBugPickup() {
+    this.pending += Math.round(SCORE_BUG_BASE * this.combo);
+    this.combo = Math.min(COMBO_CAP, this.combo * COMBO_BUMP_BUG);
+    this._comboIdle = 0;
+  }
+
+  // On crossing — bank pending into total, reset per-level state. Returns the
+  // crossing bonus (so callers/HUD can flash it).
+  bankCrossing(level) {
+    const bonus = CROSSING_BASE_BONUS * level;
+    this.pending += bonus;
+    this.banked += this.pending;
+    this.pending = 0;
+    this.combo = 1;
+    this._comboIdle = 0;
+    this.inTrafficSeconds = 0;
+    this._milestonesFired = 0;
+    return bonus;
+  }
+
+  // On collision death. Returns true iff this was the final life (game over).
+  // Pending score is forfeit; banked survives until game over.
+  onDeath() {
+    this.lives--;
+    this.pending = 0;
+    this.combo = 1;
+    this._comboIdle = 0;
+    this.inTrafficSeconds = 0;
+    this._milestonesFired = 0;
+    if (this.lives <= 0) {
+      this.gameOver = true;
+      if (this.banked > this.highScore) {
+        this.highScore = this.banked;
+        saveHighScore(this.highScore);
+      }
+      return true;
+    }
+    return false;
+  }
+}
+
+function loadHighScore() {
+  try {
+    const raw = localStorage.getItem(HIGH_SCORE_KEY);
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveHighScore(value) {
+  try {
+    localStorage.setItem(HIGH_SCORE_KEY, String(value));
+  } catch {
+    // localStorage unavailable (private mode etc.) — silently skip persistence.
+  }
+}

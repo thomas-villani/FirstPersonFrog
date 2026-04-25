@@ -53,6 +53,41 @@
         letter-spacing: 0.1em;
         pointer-events: none;
         text-shadow: 0 0 4px #000;
+        text-align: right;
+        line-height: 1.4;
+      }
+      #hud .row-score {
+        font-size: 1.2rem;
+        letter-spacing: 0.15em;
+        color: #fff;
+      }
+      #hud .row-hi {
+        opacity: 0.85;
+        color: #ffd86b;
+      }
+      #hud .row-combo {
+        font-weight: bold;
+        color: #ffae42;
+        text-shadow: 0 0 8px #ff8000, 0 0 4px #000;
+      }
+      #hud .row-deaths {
+        opacity: 0.55;
+        font-size: 0.8rem;
+      }
+      #lives {
+        position: fixed;
+        top: 0.75rem;
+        left: 1rem;
+        font-size: 1.1rem;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+        text-shadow: 0 0 4px #000;
+      }
+      #lives .label {
+        font-size: 0.85rem;
+        letter-spacing: 0.15em;
+        opacity: 0.85;
+        margin-right: 0.4rem;
       }
       #level {
         position: fixed;
@@ -78,6 +113,20 @@
         pointer-events: none;
         z-index: 6;
       }
+      #milestone-toast {
+        position: fixed;
+        top: 55%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.8rem;
+        letter-spacing: 0.15em;
+        color: #ffd86b;
+        text-shadow: 0 0 12px #000, 0 0 4px #000;
+        opacity: 0;
+        transition: opacity 200ms ease-out;
+        pointer-events: none;
+        z-index: 6;
+      }
       #flash {
         position: fixed;
         inset: 0;
@@ -92,9 +141,16 @@
   <body>
     <canvas id="canvas"></canvas>
     <div id="flash"></div>
-    <div id="hud">DEATHS: <span id="death-count">0</span></div>
+    <div id="lives"><span class="label">LIVES</span><span id="lives-icons"></span></div>
+    <div id="hud">
+      <div class="row-score">SCORE: <span id="score">0</span></div>
+      <div class="row-hi">HI: <span id="high-score">0</span></div>
+      <div class="row-combo" id="combo-row" style="display:none;">COMBO: <span id="combo">x1</span></div>
+      <div class="row-deaths">DEATHS: <span id="death-count">0</span></div>
+    </div>
     <div id="level">LEVEL 1</div>
     <div id="toast"></div>
+    <div id="milestone-toast"></div>
     <div id="overlay">
       <div>CLICK TO PLAY</div>
       <small>WASD / arrow keys to hop · mouse to look · ESC to pause</small>

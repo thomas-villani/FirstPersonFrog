@@ -1,26 +1,105 @@
-// Tiny DOM-based HUD. Death counter, level counter, red damage flash, level-up toast.
+import { STARTING_LIVES } from './config.js';
+
+// Tiny DOM-based HUD. Score, combo, lives, deaths, level toast, milestone toast,
+// red damage flash, overlay text. No three.js HUD layer — DOM is cheap and easy to
+// rearrange.
 export class Hud {
   constructor() {
     this.deathEl = document.getElementById('death-count');
     this.flashEl = document.getElementById('flash');
     this.toastEl = document.getElementById('toast');
+    this.milestoneEl = document.getElementById('milestone-toast');
     this.levelEl = document.getElementById('level');
+    this.scoreEl = document.getElementById('score');
+    this.highScoreEl = document.getElementById('high-score');
+    this.comboRowEl = document.getElementById('combo-row');
+    this.comboEl = document.getElementById('combo');
+    this.livesEl = document.getElementById('lives-icons');
+
+    this.overlay = document.getElementById('overlay');
+    this.overlayLabel = this.overlay.querySelector('div');
+    this.overlaySmall = this.overlay.querySelector('small');
+    this._defaultOverlayMain = this.overlayLabel ? this.overlayLabel.textContent : 'CLICK TO PLAY';
+    this._defaultOverlaySmall = this.overlaySmall ? this.overlaySmall.textContent : '';
+
+    this._milestoneTimer = null;
+
     this.deaths = 0;
     this.level = 1;
     this._renderLevel();
+    this.renderLives(STARTING_LIVES);
+    this.renderScore(0);
+    this.renderHighScore(0);
+    this.renderCombo(1);
   }
+
+  // --- Score / combo / lives / high score ---
+
+  renderScore(total) {
+    if (this.scoreEl) this.scoreEl.textContent = total.toLocaleString();
+  }
+
+  renderHighScore(hi) {
+    if (this.highScoreEl) this.highScoreEl.textContent = hi.toLocaleString();
+  }
+
+  // Hidden when ~1, visible and color-shifting toward red as it nears the cap.
+  renderCombo(multiplier) {
+    if (!this.comboEl || !this.comboRowEl) return;
+    if (multiplier > 1.05) {
+      this.comboEl.textContent = 'x' + multiplier.toFixed(1);
+      this.comboRowEl.style.display = 'block';
+    } else {
+      this.comboRowEl.style.display = 'none';
+    }
+  }
+
+  renderLives(n) {
+    if (!this.livesEl) return;
+    this.livesEl.textContent = '🐸'.repeat(Math.max(0, n));
+  }
+
+  // Centered toast for survival milestones / threaded events. Lives below the
+  // main level toast, so they don't collide visually.
+  showMilestoneToast(text) {
+    if (!this.milestoneEl) return;
+    this.milestoneEl.textContent = text;
+    this.milestoneEl.style.opacity = '1';
+    if (this._milestoneTimer) clearTimeout(this._milestoneTimer);
+    this._milestoneTimer = setTimeout(() => {
+      this.milestoneEl.style.opacity = '0';
+    }, 1100);
+  }
+
+  // --- Overlay text (pause / game over) ---
+
+  setOverlay(main, sub) {
+    if (this.overlayLabel) this.overlayLabel.textContent = main;
+    if (this.overlaySmall) this.overlaySmall.textContent = sub;
+  }
+
+  showPause() {
+    this.setOverlay('CLICK TO RESUME', this._defaultOverlaySmall);
+  }
+
+  showGameOver(finalScore, highScore) {
+    const isNewHi = finalScore > 0 && finalScore >= highScore;
+    const headline = isNewHi ? 'GAME OVER · NEW HIGH SCORE' : 'GAME OVER';
+    const sub = `FINAL: ${finalScore.toLocaleString()} · HI: ${highScore.toLocaleString()} · CLICK FOR NEW RUN`;
+    this.setOverlay(headline, sub);
+  }
+
+  // --- Existing flash / level / death-counter behavior ---
 
   onDeath() {
     this.deaths++;
     this.deathEl.textContent = String(this.deaths);
-    // Snap flash on, hold briefly, then let the CSS transition fade it out.
     this.flashEl.style.opacity = '0.7';
     setTimeout(() => {
       this.flashEl.style.opacity = '0';
     }, 60);
   }
 
-  // Returns the new level so the Game can ramp difficulty.
   onWin() {
     this.level++;
     this._renderLevel();
@@ -30,6 +109,19 @@ export class Hud {
       this.toastEl.style.opacity = '0';
     }, 1100);
     return this.level;
+  }
+
+  // Reset to a fresh run after game-over (called from Game.onLockAcquired).
+  resetForNewRun() {
+    this.deaths = 0;
+    if (this.deathEl) this.deathEl.textContent = '0';
+    this.level = 1;
+    this._renderLevel();
+    this.renderLives(STARTING_LIVES);
+    this.renderScore(0);
+    this.renderCombo(1);
+    if (this.milestoneEl) this.milestoneEl.style.opacity = '0';
+    if (this.toastEl) this.toastEl.style.opacity = '0';
   }
 
   _renderLevel() {

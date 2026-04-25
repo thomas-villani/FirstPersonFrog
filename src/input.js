@@ -19,7 +19,6 @@ export class Input {
     this.pitch = 0;
 
     this.overlay = document.getElementById('overlay');
-    this.overlayLabel = this.overlay.querySelector('div');
     this.canvas = document.getElementById('canvas');
 
     this._onKeyDown = this._onKeyDown.bind(this);
@@ -89,7 +88,7 @@ export class Input {
       this.overlay.classList.add('hidden');
       this.game.onLockAcquired();
     } else {
-      this.overlayLabel.textContent = 'CLICK TO RESUME';
+      // Game owns overlay text — set via hud.showPause / hud.showGameOver.
       this.overlay.classList.remove('hidden');
       this.game.onLockLost();
     }

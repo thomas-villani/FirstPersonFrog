@@ -105,6 +105,33 @@ export const MIN_SPAWN_SPACING = 2;          // extra meters beyond vehicle leng
 // --- Difficulty ramp ---
 export const SPEED_RAMP_PER_LEVEL = 0.10;    // each crossing multiplies speed by 1 + this
 
+// --- Lives & score ---
+export const STARTING_LIVES = 5;
+
+// Per-near-miss base points and combo bumps. The combo multiplier applies to the
+// NEXT event's payout (not the current one); the bump compounds on top of the
+// running multiplier and is capped at COMBO_CAP.
+export const SCORE_THREADED = 300;
+export const SCORE_GRAZED = 100;
+export const SCORE_CLOSE = 25;
+export const COMBO_BUMP_THREADED = 2.0;
+export const COMBO_BUMP_GRAZED = 1.5;
+export const COMBO_BUMP_CLOSE = 1.2;
+export const COMBO_BUMP_BUG = 1.5;
+export const COMBO_CAP = 8;
+export const COMBO_DECAY_DELAY = 3.0;        // seconds idle before decay starts
+export const COMBO_DECAY_TAU = 1.0;          // exponential decay time constant
+
+// In-traffic survival milestones — only ticks while frog is on a wheel row
+// (not start, not goal, not the safe between-lane stripe).
+export const SURVIVAL_MILESTONES = [30, 60, 90, 120, 150, 180];
+export const SURVIVAL_PAYOUTS = [500, 1000, 2000, 4000, 8000, 16000];
+
+export const SCORE_BUG_BASE = 100;
+export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
+
+export const HIGH_SCORE_KEY = 'frogger.highscore';
+
 // --- Audio ---
 export const APPROACH_PITCH = 0.35;          // max playbackRate bump for a closing vehicle
 export const MAX_AUDIBLE_DISTANCE = 60;      // meters, beyond this engine gain is 0

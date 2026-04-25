@@ -6,6 +6,7 @@ import { Spawner } from './spawner.js';
 import { Hud } from './hud.js';
 import { AudioManager } from './audio.js';
 import { checkCollision } from './collision.js';
+import { Score } from './score.js';
 import {
   FOV,
   NEAR_PLANE,
@@ -14,15 +15,17 @@ import {
   INTRO_DURATION,
   INTRO_START_POS,
   SPEED_RAMP_PER_LEVEL,
+  SUB_ROWS_PER_LANE,
   laneCountForLevel,
   goalRowForLevel,
   buildLanesForLevel,
 } from './config.js';
 
 // State machine:
-//   'PAUSED'  — overlay shown, no updates running.
-//   'INTRO'   — first-time cinematic flythrough from top-down to frog POV.
-//   'PLAYING' — normal gameplay.
+//   'PAUSED'   — overlay shown, no updates running.
+//   'INTRO'    — first-time cinematic flythrough from top-down to frog POV.
+//   'PLAYING'  — normal gameplay.
+//   'GAMEOVER' — out of lives; overlay shown with final score; click for new run.
 //
 // Each successful crossing tears down the world and rebuilds it for the new level —
 // `_buildLevel` reconstructs the scene, frog, and spawner so lane count and direction
@@ -44,6 +47,10 @@ export class Game {
     this.audio = new AudioManager();
     this.hud = new Hud();
     this.input = new Input(this.camera, this);
+
+    this.score = new Score();
+    this.hud.renderHighScore(this.score.highScore);
+    this.hud.renderLives(this.score.lives);
 
     this.state = 'PAUSED';
     this.hasIntroPlayed = false;
@@ -92,12 +99,27 @@ export class Game {
   }
 
   onLockAcquired() {
+    // Coming back from game-over: wipe run state and rebuild level 1 before play.
+    // The intro flag is already true (or doesn't matter for retry — we skip it).
+    if (this.state === 'GAMEOVER') {
+      this.score.reset();
+      this.hud.resetForNewRun();
+      this.hud.renderHighScore(this.score.highScore);
+      this._buildLevel(1);
+      this.state = 'PLAYING';
+      return;
+    }
     if (!this.hasIntroPlayed) this._beginIntro();
     else this.state = 'PLAYING';
   }
 
   onLockLost() {
-    this.state = 'PAUSED';
+    // Game-over state was set in `update()` before the pointer-lock exit fired —
+    // don't clobber it back to PAUSED, and leave the GAME OVER overlay text intact.
+    if (this.state !== 'GAMEOVER') {
+      this.state = 'PAUSED';
+      this.hud.showPause();
+    }
     this.audio.suspend();
   }
 
@@ -135,7 +157,7 @@ export class Game {
   }
 
   update(dt) {
-    if (this.state === 'PAUSED') return;
+    if (this.state === 'PAUSED' || this.state === 'GAMEOVER') return;
 
     if (this.state === 'INTRO') {
       this._introElapsed += dt;
@@ -164,16 +186,41 @@ export class Game {
     // PLAYING
     this.frog.update(dt);
     this.spawner.update(dt);
+
+    // In-traffic = on a wheel-row sub-row. Excludes start (row 0), goal, the
+    // safe between-lane stripes (every SUB_ROWS_PER_LANE-th row), and DEAD frame.
+    const inTraffic =
+      this.frog.state !== 'DEAD' &&
+      this.frog.row > 0 &&
+      this.frog.row < this.frog.goalRow &&
+      this.frog.row % SUB_ROWS_PER_LANE !== 0;
+    this.score.update(dt, inTraffic);
+
+    const toasts = this.score.drainToasts();
+    if (toasts) for (const t of toasts) this.hud.showMilestoneToast(t);
+
     const hit = checkCollision(this.frog, this.spawner.vehicles);
     if (hit) {
+      const isGameOver = this.score.onDeath();
       this.frog.die();
       this.audio.playSquish();
       this.hud.onDeath();
+      this.hud.renderLives(this.score.lives);
+      this.hud.renderHighScore(this.score.highScore);
+      if (isGameOver) {
+        this.state = 'GAMEOVER';
+        this.hud.showGameOver(this.score.banked, this.score.highScore);
+        if (document.exitPointerLock) document.exitPointerLock();
+      }
     } else if (this.frog.row === this.frog.goalRow && this.frog.state === 'IDLE') {
+      this.score.bankCrossing(this.level);
       const newLevel = this.hud.onWin();
       this.audio.playWin();
       this._buildLevel(newLevel);
     }
+
+    this.hud.renderScore(this.score.totalScore());
+    this.hud.renderCombo(this.score.combo);
     this.audio.updateEngines(this.frog, this.spawner.vehicles);
   }
 
