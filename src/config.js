@@ -207,11 +207,15 @@ export const BUG_MAGNET_RADIUS = 3.0;
 export const BUG_MAGNET_DRIFT_SPEED = 0.5;
 
 // --- Frog Focus (Lv 3 unlock) ---
-// Shift-hold time-slow. Vehicles, spawner, and engine pitch slow to
+// Press-F-to-toggle time-slow. Vehicles, spawner, and engine pitch slow to
 // WORLD_TIME_SCALE_FOCUS; frog hop and input run at normal speed (the player's edge).
-// Meter fills on near-miss / bug events and drains while held.
-// Tier-indexed durations: index 0 = locked; T1=3s, T2=4s, T3=5s.
-export const FOCUS_DURATIONS = [0, 3, 4, 5];
+// Meter fills on near-miss / bug events and drains while focus is engaged. When
+// the meter empties, focus auto-disengages and the player must press F again
+// after refilling.
+// Tier-indexed durations (max focus uptime at full meter, in seconds).
+// Bumped from the original 3/4/5 after playtest — 3 s wasn't enough uptime
+// to read a busy lane and commit, so Focus felt frustrating to deploy.
+export const FOCUS_DURATIONS = [0, 6, 8, 10];
 export const WORLD_TIME_SCALE_FOCUS = 0.35;
 export const FOCUS_NEAR_MISS_MULT = 2;       // base score multiplier on near-miss while focused
 export const FOCUS_FILL_THREADED = 0.4;
@@ -230,9 +234,11 @@ export const RECOMB_SQUASH_DURATION  = 0.35;          // s — splat-down phase
 export const RECOMB_HOLD_DURATION    = 0.30;          // s — flat hold
 
 // --- Long Jump (Lv 5 unlock) ---
-// Ctrl + WASD multiplies hop distance. Tier 0 = locked, T1 = 2×, T2 = 3×, T3 = 4×.
+// Shift + WASD multiplies hop distance. Tier 0 = locked, T1 = 2×, T2 = 3×, T3 = 4×.
 // Same HOP_DURATION → effective velocity scales with tier; arc height scales by sqrt(tier).
 // Long hops clamp to playfield edges instead of being rejected.
+// (Was originally Ctrl + WASD — but Ctrl+W closes the browser tab and pages
+// can't preventDefault on OS-level shortcuts, so we use Shift instead.)
 export const LONG_JUMP_TIERS = [1, 2, 3, 4];
 
 // --- Audio ---

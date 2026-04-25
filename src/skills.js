@@ -27,9 +27,9 @@ const TOAST_LABELS = {
   'tongueFlick:1': 'Tongue Flick',
   'tongueFlick:2': 'Tongue Flick II',
   'tongueFlick:3': 'Tongue Flick III + Bug Magnet',
-  'frogFocus:1': 'Frog Focus (Shift)',
+  'frogFocus:1': 'Frog Focus (F)',
   'recombobulation:1': 'Recombobulation',
-  'longJump:1': 'Long Jump (Ctrl)',
+  'longJump:1': 'Long Jump (Shift)',
 };
 
 export class Skills {

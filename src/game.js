@@ -229,6 +229,22 @@ export class Game {
     else this.audio.playFocusOff();
   }
 
+  // F key handler. Toggle on press: engage if unlocked + meter has fuel; or
+  // disengage immediately if already on. Press while locked / empty silently
+  // no-ops (the meter HUD is the indicator of why nothing happened).
+  // Auto-disengage on empty meter happens in update() — pressing F again after
+  // a refill is required, so toggling doesn't sneakily re-engage on a sliver.
+  toggleFocus() {
+    if (this.state !== 'PLAYING') return;
+    if (this._focusActive) {
+      this._setFocusActive(false);
+      return;
+    }
+    if (this.skills.tier('frogFocus') <= 0) return;
+    if (this.score.focusMeter <= 0) return;
+    this._setFocusActive(true);
+  }
+
   // Apply Recombobulation tier-up grants. Called after every `skills.update`.
   // Charges are awarded ONLY on tier-up: T1 grants +1, T2 grants +2, T3 grants +3,
   // each clamped to the new tier's cap. Used charges stay used until next tier-up.
@@ -277,6 +293,9 @@ export class Game {
   _beginDeathCutscene(vehicle, isGameOver) {
     this.state = 'DYING';
     this._pendingGameOver = isGameOver;
+    // Drop focus immediately so the engine lowpass + tint don't linger through
+    // the splat. score.onDeath already wiped the meter; this clears side-effects.
+    if (this._focusActive) this._setFocusActive(false);
     // score.onDeath has already cleared the combo to 1; force the HUD to
     // reflect it immediately so the multiplier doesn't visibly linger across
     // the splat (DYING short-circuits the regular renderCombo at end of update).
@@ -363,9 +382,12 @@ export class Game {
     // edge during Frog Focus). Spawner + bugs + audio engines run at scaled dt.
     const focusTier = this.skills.tier('frogFocus');
     const focusUnlocked = focusTier > 0;
-    const focusOn = focusUnlocked && this.input.shiftHeld && this.score.focusMeter > 0;
-    if (focusOn !== this._focusActive) this._setFocusActive(focusOn);
-    const scale = focusOn ? WORLD_TIME_SCALE_FOCUS : 1;
+    // Focus toggles on/off via toggleFocus() (F key). The only implicit
+    // transition is "auto-disengage when meter empties" — re-engage requires
+    // another F press after a refill, so a sliver of meter doesn't sneak focus
+    // back on while the player isn't asking for it.
+    if (this._focusActive && this.score.focusMeter <= 0) this._setFocusActive(false);
+    const scale = this._focusActive ? WORLD_TIME_SCALE_FOCUS : 1;
     const dtScaled = dt * scale;
 
     this.frog.update(dt);
@@ -375,9 +397,10 @@ export class Game {
     this._pumpLevelUpToasts(dt);
 
     // Drain the focus meter at REAL time — the cost should bite even though
-    // the world is slowed. When it hits 0, falling-edge fires next frame.
-    if (focusOn) {
-      const dur = FOCUS_DURATIONS[focusTier] ?? 3;
+    // the world is slowed. When it hits 0, the auto-disengage check above
+    // fires on the next frame.
+    if (this._focusActive) {
+      const dur = FOCUS_DURATIONS[focusTier] ?? 6;
       this.score.drainFocusMeter(dt, dur);
     }
     this.hud.renderFocusMeter(this.score.focusMeter, focusUnlocked);
@@ -432,6 +455,9 @@ export class Game {
         }
       }
       if (this.frog.row === this.frog.goalRow && this.frog.state === 'IDLE') {
+        // Drop focus before the bank — bankCrossing wipes the meter, so a
+        // 1-frame stale `_focusActive` would otherwise straddle the level rebuild.
+        if (this._focusActive) this._setFocusActive(false);
         this.score.bankCrossing(this.level);
         // Drain any frog-level-ups the bank just produced. Apply skill updates
         // immediately (subsequent skills queries see the new tier) and queue

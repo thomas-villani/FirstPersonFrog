@@ -18,6 +18,9 @@ A first-person Frogger. You are a frog at asphalt level. Cross the road, do it a
 | `S` / `↓` | Hop backward (always available) |
 | `A` / `←` · `D` / `→` | Strafe left / right |
 | Mouse | Look around |
+| `Space` / Left-click | Tongue Flick (Lv 2+) |
+| `F` | Toggle Frog Focus (Lv 3+) |
+| `Shift` + WASD | Long Jump (Lv 5+) |
 | `Click` overlay | Start / resume (also unlocks audio) |
 | `ESC` | Pause (release pointer lock) |
 
@@ -107,9 +110,9 @@ You earn one skill (or tier-up) at each frog level. Skills change how the next c
 |---|---|---|
 | 1 | (baseline) | Hop, strafe, backward hop. Mouse-look. |
 | **2** | **Tongue Flick T1** — `Space` | Fires a sticky tongue 1 cell forward in your look direction. Collects any bug it hits. ~0.3 s cooldown. |
-| **3** | **Frog Focus T1** — hold `Shift` | Slows the world to 35% (vehicles, engine pitch, spawn timers). You stay full-speed. Near-miss base score doubles while active. Meter fills on near-misses + bug pickups, drains over 3 s while held. Can't trigger empty. |
+| **3** | **Frog Focus T1** — press `F` to toggle | Slows the world to 35% (vehicles, engine pitch, spawn timers). You stay full-speed. Near-miss base score doubles while active. Meter fills on near-misses + bug pickups; drains over 6 s of full-meter uptime. Press `F` again to disengage; auto-disengages when meter empties (re-engaging requires another `F` press after a refill). Can't engage on an empty meter. |
 | **4** | **Recombobulation T1** — passive | Absorbs one fatal hit. You splat, briefly hold as a puddle, then *un*-splat and resume at the same row + cellX. No life lost. 1 charge cap, granted on unlock. |
-| **5** | **Long Jump T1** — hold `Ctrl` + hop | Hops 2× the distance (rows or cells, in the direction you press). Same hop duration → faster effective velocity, taller arc. Clamps to the playfield edge instead of overshooting. |
+| **5** | **Long Jump T1** — hold `Shift` + hop | Hops 2× the distance (rows or cells, in the direction you press). Same hop duration → faster effective velocity, taller arc. Clamps to the playfield edge instead of overshooting. |
 | 6 | Tongue Flick T2 | Tongue range 2 cells. |
 | 12 | Tongue Flick T3 + Bug Magnet | Range 3 cells. Bugs within ~3 m drift toward your column passively while you're idle. |
 
@@ -126,12 +129,12 @@ Frog Focus T2/T3 (longer durations + Psychedelic Sight road-tint heat-map), Reco
 
 ### Why use Frog Focus
 
-The big one. Hold `Shift` going into traffic to:
+The big one. Hit `F` going into traffic to:
 - See gaps clearly,
 - Time tongue flicks at moving bugs,
 - Double the score of a THREADED you would've landed anyway.
 
-The meter is the cost: you can't sustain it forever, and you can't fill it sitting on a stripe. Earn it from risk, spend it on bigger risk.
+The meter is the cost: you can't sustain it forever, and you can't fill it sitting on a stripe. Earn it from risk, spend it on bigger risk. Hit `F` again to disengage early and save the rest for a tighter spot.
 
 ---
 
@@ -162,7 +165,7 @@ Center-screen toasts: skill unlocks (gold), survival milestones + THREADED notif
 - The first earned skill is at Lv 2 (Tongue). Lv 1 is the empty baseline — the first 500 XP feels slow, then unlocks come quickly.
 - Bugs on deadly rows are worth more risk per visit than safe-stripe bugs (combo multiplier).
 - Don't strafe pointlessly — strafing on a safe stripe doesn't farm anything.
-- Frog Focus near full meter just before a busy lane is the right call. Frog Focus on an empty road wastes meter and earns nothing.
+- Frog Focus with a near-full meter just before a busy lane is the right call. Burning Focus on an empty road wastes meter and earns nothing — toggle off (press `F`) the moment you're past the danger.
 - A wheel-killed run forfeits **pending** points only — banked is safe until game over. If your combo is high, banking by reaching the goal locks it in.
 - The road past WORLD Lv 16 starts scrambling lane directions and densifying spawns. Eight lanes is the cap; the chaos is how it stays interesting.
 

@@ -21,12 +21,15 @@ export class Input {
     this.overlay = document.getElementById('overlay');
     this.canvas = document.getElementById('canvas');
 
-    // Modifier-held flags for skill input (Shift = Frog Focus, Ctrl = Long Jump).
-    // Read off the raw event each tick — no separate keyup tracking needed for
-    // hold-state correctness, and `e.shiftKey` / `e.ctrlKey` are reset cleanly
-    // when focus changes (no stuck-modifier bugs after pointer-lock loss).
+    // Modifier-held flag for Long Jump (Shift + WASD). Read off `e.shiftKey`
+    // on every keydown/keyup so it stays in sync with the OS without us
+    // tracking physical key state. Cleared on pointer-lock loss to avoid
+    // stuck-modifier state if the user releases Shift while unfocused.
+    // (Ctrl was tried first; rejected because Ctrl+W closes the browser tab
+    // and pages can't preventDefault on OS-level shortcuts. Frog Focus used to
+    // be a Shift-hold; it's now a press-F toggle owned by game.js — see
+    // Game.toggleFocus.)
     this.shiftHeld = false;
-    this.ctrlHeld = false;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -52,18 +55,17 @@ export class Input {
   }
 
   _onKeyDown(e) {
-    // Track modifiers BEFORE the repeat guard — held-key state must update on
-    // every keydown so a re-pressed Shift after a pointer-lock loss recovers.
+    // Track Shift BEFORE the repeat guard — held-key state must update on every
+    // keydown so a re-pressed Shift after a pointer-lock loss recovers.
     this.shiftHeld = e.shiftKey;
-    this.ctrlHeld = e.ctrlKey;
 
     if (e.repeat) return;
     if (this.game.state !== 'PLAYING') return;
     const frog = this.game.frog;
     const { forward, right } = this._facingAxes();
-    // Long Jump multiplier: Ctrl + WASD with the skill unlocked. T1 = 2× rows/cells.
+    // Long Jump multiplier: Shift + WASD with the skill unlocked. T1 = 2× rows/cells.
     const ljTier = this.game.skills.tier('longJump');
-    const mult = (this.ctrlHeld && ljTier > 0) ? LONG_JUMP_TIERS[ljTier] : 1;
+    const mult = (this.shiftHeld && ljTier > 0) ? LONG_JUMP_TIERS[ljTier] : 1;
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':
@@ -86,13 +88,17 @@ export class Input {
         e.preventDefault();
         this.game.tongue.flick();
         break;
+      case 'KeyF':
+        // Toggle Frog Focus. Game owns activation gating (skill unlocked +
+        // meter > 0) so a press while locked or empty just no-ops.
+        this.game.toggleFocus();
+        break;
     }
   }
 
   _onKeyUp(e) {
-    // Mirror the keydown sync. `e.shiftKey` / `e.ctrlKey` reflect post-up state.
+    // Mirror the keydown sync. `e.shiftKey` reflects post-up state.
     this.shiftHeld = e.shiftKey;
-    this.ctrlHeld = e.ctrlKey;
   }
 
   // Snap the current yaw to one of four cardinal grid quadrants, and return the
@@ -179,7 +185,6 @@ export class Input {
   // `_onPointerLockChange` on lock loss.
   _clearModifiers() {
     this.shiftHeld = false;
-    this.ctrlHeld = false;
   }
 
   dispose() {
