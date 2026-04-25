@@ -134,6 +134,12 @@ export const SPAWN_MARGIN = 8;               // spawn this far past the road edg
 export const DESPAWN_MARGIN = 8;             // despawn this far past opposite edge
 export const MIN_SPAWN_SPACING = 2;          // extra meters beyond vehicle length
 
+// Car-following: a vehicle whose bumper-to-bumper gap to its same-lane leader is below
+// FOLLOW_GAP matches the leader's speed instead of catching up. MIN_GAP is the hard
+// floor enforced after movement to prevent any visible overlap if speeds change abruptly.
+export const FOLLOW_GAP = 3.0;
+export const MIN_GAP = 0.4;
+
 // --- Difficulty ramp ---
 export const SPEED_RAMP_PER_LEVEL = 0.10;    // each crossing multiplies speed by 1 + this
 
@@ -159,8 +165,8 @@ export const COMBO_BUMP_THREADED = 2.0;
 export const COMBO_BUMP_GRAZED = 1.5;
 export const COMBO_BUMP_BUG = 1.5;
 export const COMBO_CAP = 8;
-export const COMBO_DECAY_DELAY = 3.0;        // seconds idle before decay starts
-export const COMBO_DECAY_TAU = 1.0;          // exponential decay time constant
+export const COMBO_DECAY_DELAY = 5.0;        // seconds idle before decay starts
+export const COMBO_DECAY_TAU = 2.5;          // exponential decay time constant
 
 // In-traffic survival milestones — only ticks while frog is on a wheel row
 // (not start, not goal, not the safe between-lane stripe).
@@ -174,6 +180,31 @@ export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
 
 export const HIGH_SCORE_KEY = 'frogger.highscore';
+
+// --- XP / Frog level ---
+// Cumulative XP to BE at level N: XP_PER_LEVEL_BASE * N * (N-1) / 2.
+// So Lv 1 = 0 XP (fresh-run baseline, no skills), Lv 2 = 500, Lv 3 = 1500, Lv 4 = 3000, ...
+// Banked points double as XP. Game-over wipes XP and frog level.
+export const XP_PER_LEVEL_BASE = 500;
+export const FROG_LEVEL_CAP = 17;
+
+// --- Bugs ---
+// Placed at level start in `bugs.placeBugsForLevel`. BUG_RISK_WEIGHT = chance a
+// given bug lands on a wheel-path sub-row (deadly) instead of a safe stripe.
+export const BUGS_PER_LEVEL = 4;
+export const BUG_RISK_WEIGHT = 0.7;
+
+// --- Tongue flick ---
+// Range = TONGUE_TIER_RANGES[tier] * CELL_WIDTH. Index 0 = locked (no skill).
+// Tier scaling is wired now even though only T1 unlocks at Lv 2 — T2 (Lv 6),
+// T3 (Lv 12) tier-up via the same path.
+export const TONGUE_TIER_RANGES = [0, 1, 2, 3];
+export const TONGUE_CAPSULE_RADIUS = 0.5;
+export const TONGUE_COOLDOWN = 0.32;
+export const TONGUE_FLICK_DURATION = 0.18;     // extend (0..0.35) → hold (0.35..0.65) → retract (0.65..1.0)
+// T3-only passive (declared now, used when Tongue T3 is unlocked):
+export const BUG_MAGNET_RADIUS = 3.0;
+export const BUG_MAGNET_DRIFT_SPEED = 0.5;
 
 // --- Audio ---
 export const APPROACH_PITCH = 0.35;          // max playbackRate bump for a closing vehicle

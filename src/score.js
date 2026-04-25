@@ -14,7 +14,14 @@ import {
   SCORE_BUG_BASE,
   CROSSING_BASE_BONUS,
   HIGH_SCORE_KEY,
+  XP_PER_LEVEL_BASE,
+  FROG_LEVEL_CAP,
 } from './config.js';
+
+// Cumulative XP required to BE at frog level N. Lv 1 = 0, Lv 2 = 500, Lv 3 = 1500.
+export function xpForLevel(n) {
+  return XP_PER_LEVEL_BASE * n * (n - 1) / 2;
+}
 
 // Run-state: lives, score, combo multiplier, in-traffic survival timer, high score.
 //
@@ -36,6 +43,11 @@ export class Score {
     this._milestonesFired = 0;
     this.gameOver = false;
     this._toastQueue = [];
+    // XP accumulates as banked points do. Level 1 = empty baseline (no skills);
+    // Lv 2 (500 XP) is the first earned skill (Tongue T1). Wiped on game over.
+    this.xp = 0;
+    this.frogLevel = 1;
+    this._levelUpQueue = [];
   }
 
   reset() {
@@ -48,6 +60,9 @@ export class Score {
     this._milestonesFired = 0;
     this.gameOver = false;
     this._toastQueue.length = 0;
+    this.xp = 0;
+    this.frogLevel = 1;
+    this._levelUpQueue.length = 0;
   }
 
   totalScore() {
@@ -59,6 +74,14 @@ export class Score {
     if (this._toastQueue.length === 0) return null;
     const out = this._toastQueue.slice();
     this._toastQueue.length = 0;
+    return out;
+  }
+
+  // Drains any queued frog-level-up events. Each entry is the new frog level (int).
+  drainLevelUps() {
+    if (this._levelUpQueue.length === 0) return null;
+    const out = this._levelUpQueue.slice();
+    this._levelUpQueue.length = 0;
     return out;
   }
 
@@ -121,16 +144,29 @@ export class Score {
   }
 
   // On crossing — bank pending into total, reset per-level state. Returns the
-  // crossing bonus (so callers/HUD can flash it).
+  // crossing bonus (so callers/HUD can flash it). Banked points double as XP;
+  // any frog-level thresholds crossed get queued onto `_levelUpQueue`.
   bankCrossing(level) {
     const bonus = CROSSING_BASE_BONUS * level;
     this.pending += bonus;
-    this.banked += this.pending;
+    const delta = this.pending;
+    this.banked += delta;
     this.pending = 0;
     this.combo = 1;
     this._comboIdle = 0;
     this.inTrafficSeconds = 0;
     this._milestonesFired = 0;
+
+    // XP threshold check. A high-combo crossing on a high level can cross
+    // multiple thresholds at once; queue them all so the HUD can show one
+    // toast per level reached.
+    this.xp += delta;
+    while (this.frogLevel < FROG_LEVEL_CAP) {
+      const next = xpForLevel(this.frogLevel + 1);
+      if (this.xp < next) break;
+      this.frogLevel++;
+      this._levelUpQueue.push(this.frogLevel);
+    }
     return bonus;
   }
 

@@ -29,7 +29,7 @@ Read order when picking this up across sessions:
 - **Per-run progression.** Frog Level + unlocked skills reset on game over. Each run starts as a base frog. (Arcade feel, no persistent power creep.)
 - **Two separate "level" concepts.** *World Level* (lane count + traffic difficulty) advances on each crossing — unchanged from MVP. *Frog Level* (skill tree progression) advances when banked XP crosses thresholds. These can — and should — diverge: high-skill players reach Frog Lv 17 in fewer crossings than low-skill players.
 - **Fixed unlock table.** Each Frog Level grants exactly one tier-up on a specific skill (occasionally two, late game). No player choice; the order is curated for pacing. Cap: Frog Lv 17.
-- **Backward Hop is the Lv 1 unlock.** A fresh frog can only hop forward / strafe. The first level-up enables `S` / `↓`.
+- ~~**Backward Hop is the Lv 1 unlock.**~~ **Backward hop is always available** (not gated). The first earned skill is Tongue T1 at Frog Lv 2. Lv 1 is the empty fresh-run baseline.
 - **Active Tongue Flick.** Tongue is bound to **Spacebar**, fires in the player's look direction (yaw projected onto the ground plane), reach scales with tier (1 / 2 / 3 cells).
 - **Bug Magnet is Tongue T3.** Once unlocked, bugs within ~3 m of the frog drift toward your `cellX` (passive, alongside the active flick).
 - **Plague of Frogs is Ribbit Roar T3.** Bound to its own key (Q) with its own per-level use counter, so you save it for emergencies.
@@ -193,7 +193,7 @@ On Recombob top-up: push onto `score.recombobulationCharges` (capped at current 
 |---|---|
 | WASD / arrows | Hop (existing) |
 | Mouse | Look (existing) |
-| **S / ↓** | Backward Hop (gated on Frog Lv 1) |
+| **S / ↓** | Backward Hop (always available — not gated) |
 | **Space (press)** | Tongue Flick (gated on Frog Lv 2) |
 | **Shift (hold)** | Frog Focus (gated on Frog Lv 3) |
 | **Ctrl + WASD** | Long Jump modifier (gated on Frog Lv 5) |
@@ -207,7 +207,7 @@ On Recombob top-up: push onto `score.recombobulationCharges` (capped at current 
 ### 6.2 Unlock table
 
 ```
-Frog Lv 1 : Backward Hop enabled.
+Frog Lv 1 : (empty baseline — backward hop is unconditional, not a skill)
 Frog Lv 2 : Tongue Flick T1 (1-cell reach).
 Frog Lv 3 : Frog Focus T1 (3 s slow-mo).
 Frog Lv 4 : Recombobulation T1 (1 charge cap).
@@ -323,17 +323,9 @@ Passive at Frog Lv 15. Each lane's road surface tints toward red based on **immi
 
 Distinct from Echolocation (where vehicles ARE) — Sight shows where it's UNSAFE TO STAND.
 
-### 6.11 Backward Hop (passive, Frog Lv 1)
+### 6.11 Backward Hop (always-on)
 
-Pure input gate. `frog.tryHop` already accepts negative `dRow` (`frog.js:75-92`); the gate is at the input layer:
-
-```js
-case 'KeyS': case 'ArrowDown':
-  if (this.game.skills.has('backwardHop')) frog.tryHop(-1, 0);
-  break;
-```
-
-Pressing `S` / `↓` before Frog Lv 1 is reached is silently ignored (matches the "drop mid-hop input" tone — no error feedback).
+Backward hop is unconditionally available. `frog.tryHop` accepts negative `dRow` and `input.js` calls it on `S` / `↓` with no skill check. (Earlier drafts gated this on Frog Lv 1; the gate was dropped — a single direction key isn't an interesting unlock.)
 
 ---
 
@@ -478,8 +470,8 @@ Each phase ends in a runnable build. Pick up at the first unchecked box.
 
 - [x] **Phase S1 — Score core + lives.** `score.js` with combo, milestones, banking; HUD shows score / combo / lives; `localStorage` high score; game-over flow on lives = 0.
 - [x] **Phase S2 — Near-miss detection.** `vehicles.js` `nearMiss` substate; `collision.detectNearMisses()` returns events; wired to `score.js`.
-- [ ] **Phase S3 — XP + frog-level scaffolding.** `score.js` adds `xp`, `frogLevel`, threshold check on bank. `skills.js` registry with the unlock table. HUD shows `FROG Lv N (xp/threshold)`. Level-up toast + `playLevelUp` sting on threshold cross. **No skill effects yet** — just the registry. **Verify** XP accumulates, level-ups fire on threshold, game over wipes XP and skills.
-- [ ] **Phase S4 — Backward Hop (Lv 1) + Bugs (regular only) + Tongue Flick T1 (Lv 2).** `input.js` skill-gates `S`/`↓`. `bugs.js` placement (regular bugs only — no top-up yet). `tongue.js` capsule from camera yaw, visual cylinder, `playTongueFlick`. **Verify** fresh frog can't hop back; first level-up adds it; Spacebar grabs bugs in front.
+- [x] **Phase S3 — XP + frog-level scaffolding.** `score.js` adds `xp`, `frogLevel`, threshold check on bank. `skills.js` registry with the unlock table. HUD shows `FROG Lv N (xp/threshold)`. Level-up toast + `playLevelUp` sting on threshold cross.
+- [x] **Phase S4 — Bugs (regular only) + Tongue Flick T1/T2/T3 ranges (Lv 2/6/12).** `bugs.js` placement (regular bugs only — no top-up yet). `tongue.js` capsule from camera yaw with tier-scaled range, visual cylinder, `playTongueFlick`. (Backward Hop dropped from gating — it's always available.)
 - [ ] **Phase S5 — Frog Focus (Lv 3).** Meter, Shift binding, time-scale on `Spawner.update` + audio. Score multiplier during Focus. Use a flat DOM-overlay tint as placeholder until S14.
 - [ ] **Phase S6 — Recombobulation T1 (Lv 4).** Hook into collision flow before `frog.die()`. Grant 1 charge on unlock. Puddle mesh + reform animation. No top-up bug yet.
 - [ ] **Phase S7 — Long Jump T1 (Lv 5).** Ctrl modifier in `input.js`. Frog clamps long-hops to playfield. Arc height scales with tier.

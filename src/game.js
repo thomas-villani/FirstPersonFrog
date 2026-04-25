@@ -8,6 +8,9 @@ import { AudioManager } from './audio.js';
 import { checkCollision, detectNearMisses } from './collision.js';
 import { Score } from './score.js';
 import { DeathCutscene } from './death.js';
+import { Skills, levelUpLabel } from './skills.js';
+import { BugManager } from './bugs.js';
+import { Tongue } from './tongue.js';
 import {
   FOV,
   NEAR_PLANE,
@@ -54,6 +57,18 @@ export class Game {
     this.score = new Score();
     this.hud.renderHighScore(this.score.highScore);
     this.hud.renderLives(this.score.lives);
+    this.hud.renderFrogLevel(this.score.frogLevel, this.score.xp);
+
+    // Skills + bug + tongue subsystems. Skills must be seeded BEFORE Tongue is
+    // constructed, since Tongue captures the skills reference for tier lookups.
+    this.skills = new Skills();
+    this.skills.update(this.score.frogLevel);
+    this.bugs = new BugManager();
+    this.tongue = new Tongue(this.camera, this.bugs, this.skills, this.audio, this.score);
+    // Spaced-out level-up toast queue — drained from update(dt) so multiple
+    // unlocks in one crossing don't visually stack.
+    this._levelUpToastQueue = [];
+    this._levelUpToastTimer = 0;
 
     this.state = 'PAUSED';
     this.hasIntroPlayed = false;
@@ -98,8 +113,20 @@ export class Game {
     const prePopulate = level <= 1 ? 0 : Math.min(4, Math.floor(level / 2) + 1);
     this.spawner.prePopulate(prePopulate);
 
+    // Place collectible bugs for this level. Must run AFTER prePopulate so the
+    // wheel-row layout exists, and after `this.scene` is rebuilt above.
+    if (this.bugs) this.bugs.placeBugsForLevel(level, this.scene);
+
     this.frog.onLand = () => {
-      if (this.state === 'PLAYING') this.audio.playHop();
+      if (this.state !== 'PLAYING') return;
+      this.audio.playHop();
+      // Mercy auto-collect: any bug at the frog's exact landing cell is grabbed
+      // automatically. Ensures the player never gets stuck on a bug under-foot.
+      const bug = this.bugs.tryCollectAt(this.frog.row, this.frog.cellX);
+      if (bug) {
+        this.score.addBugPickup();
+        this.audio.playPickup();
+      }
     };
   }
 
@@ -108,6 +135,9 @@ export class Game {
     // The intro flag is already true (or doesn't matter for retry — we skip it).
     if (this.state === 'GAMEOVER') {
       this.score.reset();
+      this.skills.update(this.score.frogLevel);
+      this._levelUpToastQueue.length = 0;
+      this._levelUpToastTimer = 0;
       this.hud.resetForNewRun();
       this.hud.renderHighScore(this.score.highScore);
       this._buildLevel(1);
@@ -241,6 +271,9 @@ export class Game {
     // PLAYING
     this.frog.update(dt);
     this.spawner.update(dt);
+    this.bugs.update(dt);
+    this.tongue.update(dt);
+    this._pumpLevelUpToasts(dt);
 
     // In-traffic = on a wheel-row sub-row. Excludes start (row 0), goal, the
     // safe between-lane stripes (every SUB_ROWS_PER_LANE-th row), and DEAD frame.
@@ -287,6 +320,19 @@ export class Game {
       }
       if (this.frog.row === this.frog.goalRow && this.frog.state === 'IDLE') {
         this.score.bankCrossing(this.level);
+        // Drain any frog-level-ups the bank just produced. Apply skill updates
+        // immediately (subsequent skills queries see the new tier) and queue
+        // toasts spaced out by _pumpLevelUpToasts so multiple unlocks don't
+        // visually stack.
+        const levelUps = this.score.drainLevelUps();
+        if (levelUps) {
+          for (const newLevel of levelUps) {
+            this.skills.update(newLevel);
+            const label = levelUpLabel(newLevel) ?? `FROG LEVEL ${newLevel}`;
+            this._levelUpToastQueue.push(label);
+          }
+          this.audio.playLevelUp();
+        }
         const newLevel = this.hud.onWin();
         this.audio.playWin();
         this._buildLevel(newLevel);
@@ -295,7 +341,19 @@ export class Game {
 
     this.hud.renderScore(this.score.totalScore());
     this.hud.renderCombo(this.score.combo);
+    this.hud.renderFrogLevel(this.score.frogLevel, this.score.xp);
     this.audio.updateEngines(this.frog, this.spawner.vehicles);
+  }
+
+  // Show queued level-up toasts one at a time, spaced 0.45s apart so multiple
+  // unlocks on a single crossing read as a sequence instead of overwriting.
+  _pumpLevelUpToasts(dt) {
+    if (this._levelUpToastQueue.length === 0) return;
+    this._levelUpToastTimer -= dt;
+    if (this._levelUpToastTimer > 0) return;
+    const text = this._levelUpToastQueue.shift();
+    this.hud.showLevelUpToast(text);
+    this._levelUpToastTimer = 0.45;
   }
 
   render() {

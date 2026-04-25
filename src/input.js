@@ -23,11 +23,13 @@ export class Input {
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseDown = this._onMouseDown.bind(this);
     this._onOverlayClick = this._onOverlayClick.bind(this);
     this._onPointerLockChange = this._onPointerLockChange.bind(this);
 
     window.addEventListener('keydown', this._onKeyDown);
     document.addEventListener('mousemove', this._onMouseMove);
+    document.addEventListener('mousedown', this._onMouseDown);
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
     this.overlay.addEventListener('click', this._onOverlayClick);
   }
@@ -61,7 +63,22 @@ export class Input {
       case 'ArrowRight':
         frog.tryHop(0, +1);
         break;
+      case 'Space':
+        // preventDefault stops the page from scrolling on Space outside pointer-lock.
+        e.preventDefault();
+        this.game.tongue.flick();
+        break;
     }
+  }
+
+  _onMouseDown(e) {
+    // Only fire while pointer-locked AND playing — the overlay click that
+    // acquires pointer lock fires its own click handler; we don't want it to
+    // also pop a tongue flick on the first click of a new run.
+    if (document.pointerLockElement !== this.canvas) return;
+    if (this.game.state !== 'PLAYING') return;
+    if (e.button !== 0) return; // left button only
+    this.game.tongue.flick();
   }
 
   _onMouseMove(e) {
@@ -97,6 +114,7 @@ export class Input {
   dispose() {
     window.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('mousemove', this._onMouseMove);
+    document.removeEventListener('mousedown', this._onMouseDown);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
     this.overlay.removeEventListener('click', this._onOverlayClick);
   }

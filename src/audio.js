@@ -104,6 +104,119 @@ export class AudioManager {
     osc.stop(now + duration);
   }
 
+  // Crunch on bug pickup — short filtered noise burst plus a faint blip.
+  playPickup() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const duration = 0.06;
+
+    // Filtered noise (the wet crunch).
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * duration), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / ctx.sampleRate;
+      const envelope = Math.exp(-t * 60);
+      data[i] = (Math.random() * 2 - 1) * envelope;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1800;
+    const nGain = ctx.createGain();
+    nGain.gain.value = 0.32;
+    noise.connect(hp);
+    hp.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+
+    // Faint blip on top.
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = 880;
+    const oGain = ctx.createGain();
+    oGain.gain.setValueAtTime(0.0001, now);
+    oGain.gain.linearRampToValueAtTime(0.18, now + 0.005);
+    oGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.05);
+  }
+
+  // Whip sound for the tongue flick: highpass-filtered noise with descending cutoff.
+  playTongueFlick() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const duration = 0.08;
+
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * duration), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / ctx.sampleRate;
+      const envelope = Math.exp(-t * 30);
+      data[i] = (Math.random() * 2 - 1) * envelope;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(3000, now);
+    hp.frequency.exponentialRampToValueAtTime(500, now + duration);
+    const gain = ctx.createGain();
+    gain.gain.value = 0.28;
+    src.connect(hp);
+    hp.connect(gain);
+    gain.connect(this.masterGain);
+    src.start(now);
+  }
+
+  // Frog-level-up chime: ascending arpeggio with a noise sparkle on top.
+  playLevelUp() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const t0 = now + i * 0.09;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(0.32, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.35);
+    });
+
+    // Bandpass-filtered noise sparkle on top.
+    const sparkleDur = 0.2;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * sparkleDur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / ctx.sampleRate;
+      const envelope = Math.exp(-t * 8);
+      data[i] = (Math.random() * 2 - 1) * envelope;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 5000;
+    bp.Q.value = 4;
+    const sGain = ctx.createGain();
+    sGain.gain.value = 0.18;
+    src.connect(bp);
+    bp.connect(sGain);
+    sGain.connect(this.masterGain);
+    src.start(now);
+  }
+
   // Quick celebratory chime on a successful crossing.
   playWin() {
     if (!this.ctx) return;
