@@ -19,7 +19,8 @@ export class Vehicle {
     this.type = VEHICLE_TYPES[typeName];
     this.lane = lane;
     this.direction = lane.direction;
-    this.speed = 0; // set by spawner after construction
+    this.desiredSpeed = 0; // cruise speed; set by spawner. Vehicle.speed is clamped down
+    this.speed = 0;        // by Spawner each frame when following a slower leader.
     this.x = x;
     this.length = this.type.size.L;
     this.width = this.type.size.W;
