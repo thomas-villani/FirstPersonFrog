@@ -29,16 +29,27 @@ export class Spawner {
   // while the first off-screen-spawned vehicle drives on. Vehicles are jittered
   // around evenly-spaced X positions and rejected on spacing collision (which is
   // unlikely with the spread we pick).
+  //
+  // Speeds are pre-sorted so the FRONT vehicle is the fastest in the lane and the
+  // REAR is the slowest — this guarantees no vehicle can catch the one ahead of it.
+  // The runtime spawn path enforces the same invariant via a min-of-ahead clamp.
   prePopulate(perLane) {
     if (perLane <= 0) return;
     const half = ROAD_LENGTH / 2;
     const span = 2 * half;
     for (const lane of this.lanesConfig) {
       const segWidth = span / (perLane + 1);
+      const speeds = Array.from({ length: perLane }, () =>
+        randomInRange(lane.speedRange) * this.speedMultiplier
+      );
+      speeds.sort((a, b) => a - b); // ascending: slow → fast
+      // East (+1): low x is rear, high x is front → assign slow→fast as k goes 0→last.
+      // West (-1): low x is front, high x is rear → assign fast→slow as k goes 0→last.
+      if (lane.direction < 0) speeds.reverse();
       for (let k = 0; k < perLane; k++) {
         const baseX = -half + (k + 1) * segWidth;
         const jitter = (Math.random() - 0.5) * segWidth * 0.6;
-        this._trySpawn(lane, baseX + jitter);
+        this._trySpawn(lane, baseX + jitter, speeds[k]);
       }
     }
   }
@@ -66,8 +77,13 @@ export class Spawner {
   }
 
   // Spawns one vehicle in `lane` at world X. Defaults to the off-screen spawn edge,
-  // but pre-population passes mid-road X values to seed traffic.
-  _trySpawn(lane, spawnX = spawnXForDirection(lane.direction)) {
+  // but pre-population passes mid-road X values to seed traffic. `forcedSpeed`
+  // (used by pre-population's pre-sorted speeds) bypasses the random pick.
+  //
+  // Speed is clamped to the slowest same-lane vehicle AHEAD so a faster newcomer
+  // can't catch up and visually overlap. Without this, two vehicles spawned at
+  // the rear edge with different random speeds will collide mid-road.
+  _trySpawn(lane, spawnX = spawnXForDirection(lane.direction), forcedSpeed = null) {
     const typeName = pickWeighted(lane.mix);
     const type = VEHICLE_TYPES[typeName];
 
@@ -89,8 +105,19 @@ export class Spawner {
     const r1 = firstRow + Math.floor(Math.random() * validPlacements);
     const wheelRows = [r1, r1 + spread];
 
+    let speed = forcedSpeed != null
+      ? forcedSpeed
+      : randomInRange(lane.speedRange) * this.speedMultiplier;
+    let minAhead = Infinity;
+    for (const v of this.vehicles) {
+      if (v.lane.laneIndex !== lane.laneIndex || v.direction !== lane.direction) continue;
+      const ahead = lane.direction > 0 ? v.x > spawnX : v.x < spawnX;
+      if (ahead && v.speed < minAhead) minAhead = v.speed;
+    }
+    if (speed > minAhead) speed = minAhead;
+
     const vehicle = new Vehicle(this.scene, typeName, lane, spawnX, wheelRows);
-    vehicle.speed = randomInRange(lane.speedRange) * this.speedMultiplier;
+    vehicle.speed = speed;
     this.vehicles.push(vehicle);
     if (this.audio) this.audio.attachEngine(vehicle);
   }
