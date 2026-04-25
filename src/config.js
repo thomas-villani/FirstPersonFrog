@@ -130,6 +130,10 @@ export const SURVIVAL_PAYOUTS = [500, 1000, 2000, 4000, 8000, 16000];
 export const SCORE_BUG_BASE = 100;
 export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
 
+// Near-miss proximity (used by collision.detectNearMisses).
+export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
+export const CLOSE_RADIUS = 1.5;             // m — body-center X distance for CLOSE tier
+
 export const HIGH_SCORE_KEY = 'frogger.highscore';
 
 // --- Audio ---

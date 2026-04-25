@@ -351,7 +351,7 @@ export const TONGUE_TIERS = { 1: 0, 13: 1, 17: 2 };  // strafe reach
 Each phase ends in a runnable build. Pick up at the first unchecked box.
 
 - [x] **Phase S1 — Score core + lives.** `score.js` with combo, milestones, banking. `hud.js` shows score, combo, lives. Game over flow on lives=0; `localStorage` high score. **Verify** by playing: combo decays, milestones fire, death loses a life, game over wipes score.
-- [ ] **Phase S2 — Near-miss detection.** `vehicles.js` gains `nearMiss` substate. `collision.js#detectNearMisses` returns fired events per frame. Wire to `score.js`. **Verify** combo builds when threading wheelbases; CLOSE/GRAZED/THREADED stings fire correctly.
+- [x] **Phase S2 — Near-miss detection.** `vehicles.js` gains `nearMiss` substate. `collision.js#detectNearMisses` returns fired events per frame. Wire to `score.js`. **Verify** combo builds when threading wheelbases; CLOSE/GRAZED/THREADED stings fire correctly.
 - [ ] **Phase S3 — Bugs (regular only, no Recombobulation yet).** `bugs.js` with risk-weighted level-start placement. Tongue base auto-collects current cell. `playPickup` audio. **Verify** bugs spawn in deadly rows mostly, give points, bump combo.
 - [ ] **Phase S4 — Skills framework + unlock table.** `skills.js` with the level-driven enable/tier table. No skill implementations yet — just the registry and HUD reflecting unlocks/tiers. **Verify** correct skills "light up" in HUD on level transitions.
 - [ ] **Phase S5 — Frog Focus.** Meter, Shift binding, time-scale on `Spawner.update` and audio engine voices. Score multiplier during Focus. **No FX shader yet** — use a flat color tint via DOM overlay opacity for now.

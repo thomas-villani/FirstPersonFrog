@@ -5,7 +5,7 @@ import { Input } from './input.js';
 import { Spawner } from './spawner.js';
 import { Hud } from './hud.js';
 import { AudioManager } from './audio.js';
-import { checkCollision } from './collision.js';
+import { checkCollision, detectNearMisses } from './collision.js';
 import { Score } from './score.js';
 import {
   FOV,
@@ -198,6 +198,21 @@ export class Game {
 
     const toasts = this.score.drainToasts();
     if (toasts) for (const t of toasts) this.hud.showMilestoneToast(t);
+
+    // Near-miss events fire one per vehicle on the approach→pass transition.
+    // Wired before checkCollision so a same-frame kill (frog stepped onto a
+    // wheel-row) still records the GRAZED that preceded it.
+    const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
+    if (nearMisses) {
+      for (const tier of nearMisses) {
+        const before = this.score.pending;
+        this.score.addNearMiss(tier);
+        if (tier === 'THREADED') {
+          const earned = this.score.pending - before;
+          this.hud.showMilestoneToast(`THREADED! +${earned.toLocaleString()}`);
+        }
+      }
+    }
 
     const hit = checkCollision(this.frog, this.spawner.vehicles);
     if (hit) {

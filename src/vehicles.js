@@ -43,6 +43,12 @@ export class Vehicle {
     this.group.position.set(this.x, 0, this.z);
     scene.add(this.group);
     this._scene = scene;
+
+    // Near-miss substate (read/written by collision.detectNearMisses).
+    //   tier:     highest tier seen during current approach (null if not approaching)
+    //   lastSign: previous frame's approachingSign — used to detect approach→pass
+    //             transition and fire one event per pass. Re-arms on next approach.
+    this.nearMiss = { tier: null, lastSign: 0 };
   }
 
   update(dt) {
