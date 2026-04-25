@@ -205,7 +205,9 @@ export class Score {
     this._comboIdle = 0;
     this.inTrafficSeconds = 0;
     this._milestonesFired = 0;
-    this.focusMeter = 0;
+    // Focus meter persists across crossings — a meter you worked for on this
+    // level carries into the next. Death still wipes it (onDeath); the run-
+    // ending GAMEOVER path resets it via score.reset().
 
     // XP threshold check. A high-combo crossing on a high level can cross
     // multiple thresholds at once; queue them all so the HUD can show one

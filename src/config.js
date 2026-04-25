@@ -220,7 +220,10 @@ export const WORLD_TIME_SCALE_FOCUS = 0.35;
 export const FOCUS_NEAR_MISS_MULT = 2;       // base score multiplier on near-miss while focused
 export const FOCUS_FILL_THREADED = 0.4;
 export const FOCUS_FILL_GRAZED = 0.2;
-export const FOCUS_FILL_BUG = 0.15;
+// Bugs are deliberately placed on deadly rows (~70%), so collecting one is a
+// real risk expression — bumped from the original 0.15 so a level's worth of
+// bugs (typically 4) can get a careful player to a full meter on its own.
+export const FOCUS_FILL_BUG = 0.30;
 export const FOCUS_ENGINE_LOWPASS_HZ = 350;  // engine voices LP cutoff while focused (default 800)
 
 // --- Recombobulation (Lv 4 unlock) ---

@@ -110,7 +110,7 @@ You earn one skill (or tier-up) at each frog level. Skills change how the next c
 |---|---|---|
 | 1 | (baseline) | Hop, strafe, backward hop. Mouse-look. |
 | **2** | **Tongue Flick T1** — `Space` | Fires a sticky tongue 1 cell forward in your look direction. Collects any bug it hits. ~0.3 s cooldown. |
-| **3** | **Frog Focus T1** — press `F` to toggle | Slows the world to 35% (vehicles, engine pitch, spawn timers). You stay full-speed. Near-miss base score doubles while active. Meter fills on near-misses + bug pickups; drains over 6 s of full-meter uptime. Press `F` again to disengage; auto-disengages when meter empties (re-engaging requires another `F` press after a refill). Can't engage on an empty meter. |
+| **3** | **Frog Focus T1** — press `F` to toggle | Slows the world to 35% (vehicles, engine pitch, spawn timers). You stay full-speed. Near-miss base score doubles while active. Meter fills on near-misses + bug pickups; drains over 6 s of full-meter uptime. Meter **persists across crossings** — a banked level doesn't burn what you earned. Press `F` again to disengage; auto-disengages when meter empties (re-engaging requires another `F` press after a refill). Can't engage on an empty meter. Wiped on death. |
 | **4** | **Recombobulation T1** — passive | Absorbs one fatal hit. You splat, briefly hold as a puddle, then *un*-splat and resume at the same row + cellX. No life lost. 1 charge cap, granted on unlock. |
 | **5** | **Long Jump T1** — hold `Shift` + hop | Hops 2× the distance (rows or cells, in the direction you press). Same hop duration → faster effective velocity, taller arc. Clamps to the playfield edge instead of overshooting. |
 | 6 | Tongue Flick T2 | Tongue range 2 cells. |
@@ -163,7 +163,7 @@ Center-screen toasts: skill unlocks (gold), survival milestones + THREADED notif
 ## Tips
 
 - The first earned skill is at Lv 2 (Tongue). Lv 1 is the empty baseline — the first 500 XP feels slow, then unlocks come quickly.
-- Bugs on deadly rows are worth more risk per visit than safe-stripe bugs (combo multiplier).
+- Bugs on deadly rows are worth more risk per visit than safe-stripe bugs (combo multiplier). They also fill the Focus meter generously — a clean level with all bugs collected is roughly a full meter on its own.
 - Don't strafe pointlessly — strafing on a safe stripe doesn't farm anything.
 - Frog Focus with a near-full meter just before a busy lane is the right call. Burning Focus on an empty road wastes meter and earns nothing — toggle off (press `F`) the moment you're past the danger.
 - A wheel-killed run forfeits **pending** points only — banked is safe until game over. If your combo is high, banking by reaching the goal locks it in.
