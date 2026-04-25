@@ -46,22 +46,23 @@ export class Input {
     if (e.repeat) return;
     if (this.game.state !== 'PLAYING') return;
     const frog = this.game.frog;
+    const { forward, right } = this._facingAxes();
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':
-        frog.tryHop(+1, 0);
+        frog.tryHop(forward.dRow, forward.dCell);
         break;
       case 'KeyS':
       case 'ArrowDown':
-        frog.tryHop(-1, 0);
+        frog.tryHop(-forward.dRow, -forward.dCell);
         break;
       case 'KeyA':
       case 'ArrowLeft':
-        frog.tryHop(0, -1);
+        frog.tryHop(-right.dRow, -right.dCell);
         break;
       case 'KeyD':
       case 'ArrowRight':
-        frog.tryHop(0, +1);
+        frog.tryHop(right.dRow, right.dCell);
         break;
       case 'Space':
         // preventDefault stops the page from scrolling on Space outside pointer-lock.
@@ -69,6 +70,44 @@ export class Input {
         this.game.tongue.flick();
         break;
     }
+  }
+
+  // Snap the current yaw to one of four cardinal grid quadrants, and return the
+  // (dRow, dCell) basis vectors for "forward" (where the camera is looking) and
+  // "right" (90° CW in the XZ plane). Yaw=0 looks down -Z, which is +dRow.
+  //   k=0 → face -Z: forward=(+1, 0), right=(0, +1)
+  //   k=1 → face -X: forward=( 0,-1), right=(+1, 0)
+  //   k=2 → face +Z: forward=(-1, 0), right=(0, -1)
+  //   k=3 → face +X: forward=( 0,+1), right=(-1, 0)
+  //
+  // Z-axis zones are widened by FACING_Z_BIAS (~18%) so a partial head-turn
+  // toward oncoming traffic doesn't flip W into a strafe — players naturally
+  // crane sideways to read the lane and we want forward intent to win out.
+  _facingAxes() {
+    const FACING_Z_BIAS = 0.18;
+    const zHalf = (Math.PI / 4) * (1 + FACING_Z_BIAS); // half-width of -Z and +Z zones
+
+    // Normalize yaw to (-π, π].
+    let y = this.yaw % (Math.PI * 2);
+    if (y > Math.PI) y -= Math.PI * 2;
+    else if (y <= -Math.PI) y += Math.PI * 2;
+
+    const absY = Math.abs(y);
+    let k;
+    if (absY <= zHalf) k = 0;
+    else if (absY >= Math.PI - zHalf) k = 2;
+    else if (y > 0) k = 1;
+    else k = 3;
+
+    const FORWARDS = [
+      { dRow:  1, dCell:  0 },
+      { dRow:  0, dCell: -1 },
+      { dRow: -1, dCell:  0 },
+      { dRow:  0, dCell:  1 },
+    ];
+    const forward = FORWARDS[k];
+    const right = { dRow: -forward.dCell, dCell: forward.dRow };
+    return { forward, right };
   }
 
   _onMouseDown(e) {
