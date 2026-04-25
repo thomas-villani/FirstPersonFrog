@@ -37,6 +37,34 @@ export const STRIPE_COLOR = 0xf2f2f2;
 export const STRIPE_WIDTH_OUTER = 0.18;   // start/end of road
 export const STRIPE_WIDTH_DIVIDER = 0.34; // safe between-lane stripe — wider so it reads from 5cm POV
 
+// --- Landscape (decorative scenery beyond the medians) ---
+export const FAR_GRASS_DEPTH = 220;       // how deep the off-road grass extends past each median
+export const FAR_GRASS_WIDTH = 400;       // X-axis width of the off-road grass plane
+export const POND_COLOR = 0x2e5a8a;
+export const POND_RADIUS_X = 28;          // ellipse half-extent along X
+export const POND_RADIUS_Z = 14;          // ellipse half-extent along Z
+export const POND_Z_OFFSET = 22;          // distance past the goal median's far edge
+export const TREE_TRUNK_COLOR = 0x4a3220;
+export const TREE_FOLIAGE_COLOR = 0x2f6b2a;
+export const TREE_COUNT_PER_SIDE = 14;    // trees scattered on each off-road bank
+
+// --- Road decorations ---
+// Bott's-dot style markers on the safe stripes — one per cellX position so the
+// player has a visible X reference while crossing.
+export const PEBBLE_COLOR = 0xeae0c8;
+export const PEBBLE_SIZE = 0.22;          // diameter of each marker (fits within STRIPE_WIDTH_DIVIDER)
+export const PEBBLE_HEIGHT = 0.07;        // low enough not to occlude oncoming traffic from 5cm POV
+
+// Flattened road garbage — purely decorative texture, scattered randomly on the road.
+export const GARBAGE_COUNT = 60;
+export const GARBAGE_TYPES = [
+  { color: 0xb0b0b0, w: 0.16, l: 0.22 }, // crushed can
+  { color: 0xc8b48a, w: 0.30, l: 0.22 }, // paper bag
+  { color: 0xeeeeee, w: 0.12, l: 0.16 }, // cup
+  { color: 0x8a6a3a, w: 0.36, l: 0.28 }, // cardboard scrap
+  { color: 0x5a4a3a, w: 0.18, l: 0.12 }, // unidentifiable smear
+];
+
 // --- Lane layout ---
 // Frog row index N maps to world Z = -N * SUB_ROW_DEPTH.
 // Row 0 = start (back edge of start median, on the lip of lane 0).
@@ -155,6 +183,17 @@ export const ENGINE_POOL_SIZE = 8;
 // --- Intro flythrough ---
 export const INTRO_DURATION = 2.6;           // seconds for the top-down → frog-eye descent
 export const INTRO_START_POS = [0, 28, 9];   // world-space camera start (high & slightly behind)
+
+// --- Death cutscene ---
+// 3rd-person splat replay shown after a killing collision (when lives remain).
+// Camera detaches from the frog, snaps to a 3/4 aerial view of the impact, and
+// orbits slightly while the frog mesh squashes flat and blood spreads.
+export const DEATH_CUTSCENE_DURATION = 1.4;   // total seconds for the cutscene
+export const DEATH_CAM_HEIGHT = 1.6;          // initial camera Y above the splat
+export const DEATH_CAM_RADIUS = 1.9;          // initial camera distance from impact (XZ)
+export const DEATH_CAM_ORBIT = Math.PI / 8;   // radians swept during the cutscene
+export const DEATH_BLOOD_COLOR = 0xb01818;
+export const DEATH_DROPLET_COUNT = 14;
 
 // --- Derived helpers ---
 export function rowToZ(row) {

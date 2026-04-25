@@ -1,11 +1,11 @@
 import { STARTING_LIVES } from './config.js';
 
-// Tiny DOM-based HUD. Score, combo, lives, deaths, level toast, milestone toast,
-// red damage flash, overlay text. No three.js HUD layer — DOM is cheap and easy to
-// rearrange.
+// Tiny DOM-based HUD. Score, combo, lives, near-miss counter, level toast,
+// milestone toast, red damage flash, overlay text. No three.js HUD layer — DOM
+// is cheap and easy to rearrange.
 export class Hud {
   constructor() {
-    this.deathEl = document.getElementById('death-count');
+    this.nearMissEl = document.getElementById('near-miss-count');
     this.flashEl = document.getElementById('flash');
     this.toastEl = document.getElementById('toast');
     this.milestoneEl = document.getElementById('milestone-toast');
@@ -24,13 +24,14 @@ export class Hud {
 
     this._milestoneTimer = null;
 
-    this.deaths = 0;
+    this.nearMisses = 0;
     this.level = 1;
     this._renderLevel();
     this.renderLives(STARTING_LIVES);
     this.renderScore(0);
     this.renderHighScore(0);
     this.renderCombo(1);
+    this._renderNearMisses();
   }
 
   // --- Score / combo / lives / high score ---
@@ -89,11 +90,21 @@ export class Hud {
     this.setOverlay(headline, sub);
   }
 
-  // --- Existing flash / level / death-counter behavior ---
+  // --- Near-miss lifetime counter ---
+  // Bumped on every THREADED/UNDER/GRAZED event. Survives respawn; resets only
+  // on a new run.
+  onNearMiss() {
+    this.nearMisses++;
+    this._renderNearMisses();
+  }
+
+  _renderNearMisses() {
+    if (this.nearMissEl) this.nearMissEl.textContent = String(this.nearMisses);
+  }
+
+  // --- Damage flash on collision ---
 
   onDeath() {
-    this.deaths++;
-    this.deathEl.textContent = String(this.deaths);
     this.flashEl.style.opacity = '0.7';
     setTimeout(() => {
       this.flashEl.style.opacity = '0';
@@ -113,8 +124,8 @@ export class Hud {
 
   // Reset to a fresh run after game-over (called from Game.onLockAcquired).
   resetForNewRun() {
-    this.deaths = 0;
-    if (this.deathEl) this.deathEl.textContent = '0';
+    this.nearMisses = 0;
+    this._renderNearMisses();
     this.level = 1;
     this._renderLevel();
     this.renderLives(STARTING_LIVES);

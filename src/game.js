@@ -7,6 +7,7 @@ import { Hud } from './hud.js';
 import { AudioManager } from './audio.js';
 import { checkCollision, detectNearMisses } from './collision.js';
 import { Score } from './score.js';
+import { DeathCutscene } from './death.js';
 import {
   FOV,
   NEAR_PLANE,
@@ -25,6 +26,8 @@ import {
 //   'PAUSED'   — overlay shown, no updates running.
 //   'INTRO'    — first-time cinematic flythrough from top-down to frog POV.
 //   'PLAYING'  — normal gameplay.
+//   'DYING'    — 3rd-person splat cutscene after a fatal hit (lives > 0). World
+//                is frozen for the duration; cutscene owns the camera.
 //   'GAMEOVER' — out of lives; overlay shown with final score; click for new run.
 //
 // Each successful crossing tears down the world and rebuilds it for the new level —
@@ -57,6 +60,8 @@ export class Game {
     this._introElapsed = 0;
     this._introLook = new THREE.Vector3();
     this._introFrogMesh = null;
+    this.deathCutscene = null;
+    this._pendingGameOver = false;
 
     this._buildLevel(1);
 
@@ -116,6 +121,10 @@ export class Game {
   onLockLost() {
     // Game-over state was set in `update()` before the pointer-lock exit fired —
     // don't clobber it back to PAUSED, and leave the GAME OVER overlay text intact.
+    // If we lose pointer lock mid-cutscene, snap to its end so resume goes
+    // straight back to PLAYING from the start row instead of resuming a
+    // half-finished splat with a detached camera.
+    if (this.state === 'DYING') this._finishDeathCutscene();
     if (this.state !== 'GAMEOVER') {
       this.state = 'PAUSED';
       this.hud.showPause();
@@ -156,8 +165,54 @@ export class Game {
     this.state = 'PLAYING';
   }
 
+  _beginDeathCutscene(vehicle, isGameOver) {
+    this.state = 'DYING';
+    this._pendingGameOver = isGameOver;
+    // score.onDeath has already cleared the combo to 1; force the HUD to
+    // reflect it immediately so the multiplier doesn't visibly linger across
+    // the splat (DYING short-circuits the regular renderCombo at end of update).
+    this.hud.renderCombo(1);
+    // Wipe per-vehicle near-miss tracking so a half-built approach doesn't
+    // pay out after respawn. Without this, lastSign frozen at >0 from the
+    // kill frame would resolve to a transition on the first PLAYING frame
+    // post-cutscene and fire a stale GRAZED.
+    for (const v of this.spawner.vehicles) {
+      v.nearMiss.tier = null;
+      v.nearMiss.threadedHop = false;
+      v.nearMiss.lastSign = 0;
+    }
+    this.deathCutscene = new DeathCutscene(this.scene, this.camera, this.frog, vehicle);
+  }
+
+  _finishDeathCutscene() {
+    if (!this.deathCutscene) return;
+    this.deathCutscene.cleanup();
+    this.deathCutscene = null;
+    if (this._pendingGameOver) {
+      this._pendingGameOver = false;
+      this.state = 'GAMEOVER';
+      this.hud.showGameOver(this.score.banked, this.score.highScore);
+      if (document.exitPointerLock) document.exitPointerLock();
+    } else {
+      this.frog.resetToStart();
+      this.input.resetLook();
+      this.state = 'PLAYING';
+    }
+  }
+
   update(dt) {
     if (this.state === 'PAUSED' || this.state === 'GAMEOVER') return;
+
+    if (this.state === 'DYING') {
+      // Frog is frozen, but traffic keeps rolling past the splat — sells the
+      // gag (cars don't care). Engines keep doppler-tracking the frog's last
+      // position. Cutscene drives the camera and ticks its own splat animation.
+      this.spawner.update(dt);
+      this.audio.updateEngines(this.frog, this.spawner.vehicles);
+      const done = this.deathCutscene.update(dt);
+      if (done) this._finishDeathCutscene();
+      return;
+    }
 
     if (this.state === 'INTRO') {
       this._introElapsed += dt;
@@ -199,23 +254,10 @@ export class Game {
     const toasts = this.score.drainToasts();
     if (toasts) for (const t of toasts) this.hud.showMilestoneToast(t);
 
-    // Near-miss events fire one per vehicle on the approach→pass transition.
-    // Wired before checkCollision so a same-frame kill (frog stepped onto a
-    // wheel-row) still records the GRAZED that preceded it.
-    const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
-    if (nearMisses) {
-      for (const { tier, vehicle } of nearMisses) {
-        const before = this.score.pending;
-        this.score.addNearMiss(tier, vehicle);
-        const earned = this.score.pending - before;
-        const label =
-          tier === 'THREADED' ? `THREADED! +${earned.toLocaleString()}` :
-          tier === 'UNDER'    ? `UNDER +${earned.toLocaleString()}` :
-          tier === 'GRAZED'   ? `GRAZED +${earned.toLocaleString()}` : null;
-        if (label) this.hud.showMilestoneToast(label);
-      }
-    }
-
+    // Collision check FIRST. A fatal hit short-circuits near-miss processing
+    // for this frame — getting wheel-killed shouldn't also pay out a GRAZED.
+    // _beginDeathCutscene wipes per-vehicle near-miss state too, so stale
+    // approaches don't resolve on the first frame after respawn.
     const hit = checkCollision(this.frog, this.spawner.vehicles);
     if (hit) {
       const isGameOver = this.score.onDeath();
@@ -224,16 +266,31 @@ export class Game {
       this.hud.onDeath();
       this.hud.renderLives(this.score.lives);
       this.hud.renderHighScore(this.score.highScore);
-      if (isGameOver) {
-        this.state = 'GAMEOVER';
-        this.hud.showGameOver(this.score.banked, this.score.highScore);
-        if (document.exitPointerLock) document.exitPointerLock();
+      // Always run the splat cutscene — even on the final life. The GAMEOVER
+      // overlay is shown by _finishDeathCutscene once the splat completes.
+      this._beginDeathCutscene(hit, isGameOver);
+    } else {
+      // Near-miss events fire one per vehicle on the approach→pass transition.
+      const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
+      if (nearMisses) {
+        for (const { tier, vehicle } of nearMisses) {
+          const before = this.score.pending;
+          this.score.addNearMiss(tier, vehicle);
+          const earned = this.score.pending - before;
+          this.hud.onNearMiss();
+          const label =
+            tier === 'THREADED' ? `THREADED! +${earned.toLocaleString()}` :
+            tier === 'UNDER'    ? `UNDER +${earned.toLocaleString()}` :
+            tier === 'GRAZED'   ? `GRAZED +${earned.toLocaleString()}` : null;
+          if (label) this.hud.showMilestoneToast(label);
+        }
       }
-    } else if (this.frog.row === this.frog.goalRow && this.frog.state === 'IDLE') {
-      this.score.bankCrossing(this.level);
-      const newLevel = this.hud.onWin();
-      this.audio.playWin();
-      this._buildLevel(newLevel);
+      if (this.frog.row === this.frog.goalRow && this.frog.state === 'IDLE') {
+        this.score.bankCrossing(this.level);
+        const newLevel = this.hud.onWin();
+        this.audio.playWin();
+        this._buildLevel(newLevel);
+      }
     }
 
     this.hud.renderScore(this.score.totalScore());
