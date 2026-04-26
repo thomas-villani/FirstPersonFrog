@@ -48,6 +48,24 @@ export const TREE_TRUNK_COLOR = 0x4a3220;
 export const TREE_FOLIAGE_COLOR = 0x2f6b2a;
 export const TREE_COUNT_PER_SIDE = 14;    // trees scattered on each off-road bank
 
+// --- Central guardrail (≥4-lane roads) ---
+// Two parallel rails framing the central safe stripe + vertical posts on the
+// stripe centerline. Pure decoration; collision ignores it. Frog hitbox is
+// 0.3m wide (±0.15m); rails sit at ±DIVIDER_RAIL_OFFSET so they never overlap
+// the frog AABB at any cellX. The post (centered on the stripe) is
+// DIVIDER_POST_THICKNESS thick — under the 0.34m stripe width but tall enough
+// to read as imposing from a 5cm POV.
+export const DIVIDER_MIN_LANES = 4;
+export const DIVIDER_RAIL_OFFSET = 0.12;     // m, each rail offset from stripe centerline
+export const DIVIDER_RAIL_THICKNESS = 0.06;
+export const DIVIDER_RAIL_HEIGHT = 1.05;     // top edge above asphalt (lower of two rails sits below)
+export const DIVIDER_RAIL_SECOND_HEIGHT = 0.55; // lower rail height
+export const DIVIDER_POST_SPACING = 5;       // m between posts along the road
+export const DIVIDER_POST_HEIGHT = 1.6;
+export const DIVIDER_POST_THICKNESS = 0.10;
+export const DIVIDER_RAIL_COLOR = 0xb8b8c0;
+export const DIVIDER_POST_COLOR = 0x404040;
+
 // --- Road decorations ---
 // Bott's-dot style markers on the safe stripes — one per cellX position so the
 // player has a visible X reference while crossing.
@@ -64,6 +82,54 @@ export const GARBAGE_TYPES = [
   { color: 0x8a6a3a, w: 0.36, l: 0.28 }, // cardboard scrap
   { color: 0x5a4a3a, w: 0.18, l: 0.12 }, // unidentifiable smear
 ];
+
+// 3D decorative rocks — small SphereGeometry chunks scattered on the road and
+// off-road banks. Pure decoration; collision ignores them.
+export const ROCK_COUNT_ON_ROAD = 25;
+export const ROCK_COUNT_OFF_ROAD = 35;
+export const ROCK_COLORS = [0x6a6058, 0x807060, 0x4a4238, 0x9a8a78];
+export const ROCK_RADIUS_RANGE = [0.04, 0.14];
+
+// --- Blocking road obstacles ---
+// Litter on the safe between-lane stripes that blocks the frog's hop. Strafe
+// around them. Each obstacle reserves its (row, cellX) cell.
+export const OBSTACLE_TYPES = [
+  { kind: 'sodaCanRed',    radius: 0.10, height: 0.22, color: 0xcc1111, geom: 'cylinder' },
+  { kind: 'sodaCanSilver', radius: 0.10, height: 0.22, color: 0xc0c0c0, geom: 'cylinder' },
+  { kind: 'sodaBottle',    radius: 0.07, height: 0.32, color: 0x2a8a3a, geom: 'cylinder' },
+  { kind: 'trashBag',      radius: 0.32, height: 0.45, color: 0x202020, geom: 'sphere' },
+];
+export const OBSTACLES_PER_LEVEL_BASE = 1;
+export const OBSTACLES_PER_LEVEL_CAP = 4;
+
+// --- Biome themes ---
+// Each level rebuild picks a theme; world.js applies sky/fog/grass and gates
+// the optional decoration helpers (buildings, mountains, cacti). Level 1
+// is locked to "meadow" so the cinematic intro stays consistent.
+export const THEMES = {
+  meadow: {
+    sky: 0x87ceeb, grass: 0x4a7c3a, fogStart: 15, fogEnd: 80,
+    trees: 14, pond: true, buildings: 0, mountains: 0, cacti: 0,
+  },
+  suburb: {
+    sky: 0x9bc3df, grass: 0x6a8a44, fogStart: 14, fogEnd: 75,
+    trees: 8, pond: false, buildings: 10, mountains: 0, cacti: 0,
+  },
+  mountain: {
+    sky: 0xb8c8d8, grass: 0x5a7034, fogStart: 18, fogEnd: 90,
+    trees: 6, treeFoliage: 0x255028, pond: true,
+    buildings: 0, mountains: 8, cacti: 0,
+  },
+  desert: {
+    sky: 0xeac98a, grass: 0xb89868, fogStart: 12, fogEnd: 70,
+    trees: 0, pond: false, buildings: 0, mountains: 4, cacti: 12,
+  },
+};
+export function pickThemeForLevel(level) {
+  if (level <= 1) return THEMES.meadow;
+  const keys = Object.keys(THEMES);
+  return THEMES[keys[Math.floor(Math.random() * keys.length)]];
+}
 
 // --- Lane layout ---
 // Frog row index N maps to world Z = -N * SUB_ROW_DEPTH.
@@ -100,6 +166,14 @@ export const LEVELS_PER_LANE_STEP = 2; // 2 levels per lane added
 //   Wheels never land on the lane's last sub-row (that's the safe between-lane stripe).
 // `scoreThreaded` overrides SCORE_THREADED per type — shorter wheelbases are
 // harder to thread, so smaller vehicles pay more.
+//
+// Optional fields (used by the new vehicle generalization):
+//   axleXs     — array of local-X axle positions. Default [+L/2-2r, -L/2+2r] (2 axles).
+//                Use to model 8-axle road-trains, etc.
+//   singleTrack— true → 1 wheel per axle, on the lane's wheel-row centerline (motorbikes).
+//   bodyWidth  — visual body Z-width override (default = wheel-track).
+//   bodyParts  — array of {length, gap, color, height?} laid along X to model multi-section
+//                bodies (cab + 2 trailers). Total length+gaps must equal size.L.
 export const VEHICLE_TYPES = {
   sedan: {
     size: { L: 4.5, W: 2.0, H: 1.5 },
@@ -117,16 +191,62 @@ export const VEHICLE_TYPES = {
     wheelRowSpread: 5,
     scoreThreaded: 300,
   },
+  boxVan: {
+    size: { L: 7, W: 2.0, H: 2.8 },
+    color: 0xc8a050,
+    wheelRadius: 0.4,
+    wheelWidth: 0.28,
+    wheelRowSpread: 4,
+    scoreThreaded: 400,
+  },
+  motorcycle: {
+    // Single-track: wheelRowSpread=1 reserves a 2-sub-row footprint for spacing
+    // bookkeeping, but `singleTrack` collapses both wheel-rows onto one centerline.
+    size: { L: 2.2, W: 0.5, H: 1.2 },
+    color: 0x202020,
+    wheelRadius: 0.32,
+    wheelWidth: 0.18,
+    wheelRowSpread: 1,
+    singleTrack: true,
+    bodyWidth: 0.5,
+    scoreThreaded: 800,
+  },
+  doubleTrailer: {
+    // Cab 4m + gap 0.5 + trailer 8.5 + gap 0.5 + trailer 8.5 = 22m total.
+    // 8 axles: 2 under the cab, 3 under each trailer.
+    size: { L: 22, W: 2.5, H: 3.5 },
+    color: 0x808088,
+    wheelRadius: 0.55,
+    wheelWidth: 0.35,
+    wheelRowSpread: 5,
+    axleXs: [10.0, 8.5, 2.0, 1.0, 0.0, -7.0, -8.0, -9.0],
+    bodyParts: [
+      { length: 4.0, gap: 0.0, color: 0x4a4a52, height: 2.6 }, // cab
+      { length: 8.5, gap: 0.5, color: 0x808088, height: 3.5 }, // trailer 1
+      { length: 8.5, gap: 0.5, color: 0x9a8a72, height: 3.5 }, // trailer 2
+    ],
+    scoreThreaded: 250,
+  },
 };
 
 // --- Per-lane traffic templates ---
 // `buildLanesForLevel` cycles through these to give each lane in the level a different feel.
+// First 5 templates kept verbatim from the MVP so the early levels still feel
+// like the cinematic intro; new "industrial" + "fast" templates (using boxVan,
+// motorcycle, doubleTrailer) cycle in once levels reach lane index 5+.
 const LANE_TEMPLATES = [
   { speedRange: [7, 10], spawnInterval: [1.6, 3.0], mix: [['sedan', 0.75], ['truck', 0.25]] },
   { speedRange: [10, 14], spawnInterval: [1.2, 2.4], mix: [['sedan', 0.5], ['truck', 0.5]] },
   { speedRange: [8, 12], spawnInterval: [1.4, 2.6], mix: [['sedan', 0.6], ['truck', 0.4]] },
   { speedRange: [11, 15], spawnInterval: [1.0, 2.2], mix: [['sedan', 0.4], ['truck', 0.6]] },
   { speedRange: [6, 9], spawnInterval: [2.0, 3.5], mix: [['truck', 1.0]] },
+  // Industrial: heavy mixed freight. doubleTrailer caps the wheelbase, so
+  // spawnInterval is generous to keep gaps for threading.
+  { speedRange: [7, 10], spawnInterval: [2.0, 3.4],
+    mix: [['boxVan', 0.35], ['truck', 0.4], ['doubleTrailer', 0.25]] },
+  // Fast: bikes weaving with sedans.
+  { speedRange: [13, 18], spawnInterval: [0.9, 2.0],
+    mix: [['motorcycle', 0.45], ['sedan', 0.55]] },
 ];
 
 // --- Spawn geometry ---
@@ -291,7 +411,7 @@ export const CAPPED_AT_LEVEL = MAX_LANES * LEVELS_PER_LANE_STEP; // 16
 
 // East lane count for a given total lane count. East lanes go at low laneIndex; west
 // lanes fill the remainder.
-function eastCountForLanes(n) {
+export function eastCountForLanes(n) {
   return Math.max(0, Math.ceil(n / 2));
 }
 

@@ -118,13 +118,17 @@ export class BugManager {
 
   // Risk-weighted random placement. ~70% on a wheel-path sub-row of a random lane
   // (deadly territory), ~30% on the lane's safe stripe (last sub-row). Ensures no
-  // duplicate (row, cellX) cells.
-  placeBugsForLevel(level, scene) {
+  // duplicate (row, cellX) cells. `excludeCells` is an optional list of
+  // {row, cellX} occupied by blocking obstacles — bugs avoid those.
+  placeBugsForLevel(level, scene, excludeCells = null) {
     this.disposeAll();
 
     const laneCount = laneCountForLevel(level);
     if (laneCount <= 0) return;
     const used = new Set();
+    if (excludeCells) {
+      for (const c of excludeCells) used.add(`${c.row}:${c.cellX}`);
+    }
     let attempts = 0;
     const maxAttempts = BUGS_PER_LEVEL * 12; // failsafe against unlucky cell collisions
     while (this.bugs.length < BUGS_PER_LEVEL && attempts < maxAttempts) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, disposeScene } from './world.js';
+import { buildWorld, disposeScene, placeObstaclesForLevel } from './world.js';
 import { Frog } from './frog.js';
 import { Input } from './input.js';
 import { Spawner } from './spawner.js';
@@ -28,6 +28,7 @@ import {
   laneCountForLevel,
   goalRowForLevel,
   buildLanesForLevel,
+  pickThemeForLevel,
 } from './config.js';
 
 // State machine:
@@ -117,9 +118,18 @@ export class Game {
     this.level = level;
     const laneCount = laneCountForLevel(level);
     const goalRow = goalRowForLevel(level);
+    this.theme = pickThemeForLevel(level);
 
-    this.scene = buildWorld(laneCount);
+    this.scene = buildWorld(laneCount, this.theme);
+    this.obstacles = placeObstaclesForLevel(level, this.scene, laneCount);
     this.frog = new Frog(this.scene, this.camera, goalRow);
+    this.frog.isBlocked = (row, cellX) => {
+      for (let i = 0; i < this.obstacles.length; i++) {
+        const o = this.obstacles[i];
+        if (o.row === row && o.cellX === cellX) return true;
+      }
+      return false;
+    };
     this.spawner = new Spawner(this.scene, buildLanesForLevel(level), this.audio);
     this.spawner.setSpeedMultiplier(1 + SPEED_RAMP_PER_LEVEL * (level - 1));
 
@@ -130,8 +140,9 @@ export class Game {
     this.spawner.prePopulate(prePopulate);
 
     // Place collectible bugs for this level. Must run AFTER prePopulate so the
-    // wheel-row layout exists, and after `this.scene` is rebuilt above.
-    if (this.bugs) this.bugs.placeBugsForLevel(level, this.scene);
+    // wheel-row layout exists, after `this.scene` is rebuilt above, and after
+    // obstacles so bugs can't spawn on a blocked cell.
+    if (this.bugs) this.bugs.placeBugsForLevel(level, this.scene, this.obstacles);
 
     this.frog.onLand = () => {
       if (this.state !== 'PLAYING') return;

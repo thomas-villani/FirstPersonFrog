@@ -133,7 +133,7 @@ export function detectNearMisses(frog, vehicles) {
       // equal that line. Sideways hops and forward hops entirely inside the
       // safe Z gap don't qualify — they touch no wheel-row.
       if (frog.state === 'HOPPING') {
-        const wheelbaseHalfL = v.length / 2 - v.type.wheelRadius * 2;
+        const wheelbaseHalfL = v.wheelbaseHalfL;
         if (wheelbaseHalfL > 0 && Math.abs(v.x - fx) < wheelbaseHalfL) {
           if (
             v.wheelRows.includes(frog.prevRow) ||

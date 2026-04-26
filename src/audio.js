@@ -10,7 +10,13 @@ const ENGINE_LOWPASS_DEFAULT = 800;
 // Web Audio API wrapper. Procedural SFX (no WAV assets) so there's no asset pipeline.
 // AudioContext must be created inside a user-gesture handler — see resume().
 
-const ENGINE_BASE_FREQ = { truck: 58, sedan: 92 };
+const ENGINE_BASE_FREQ = {
+  truck: 58,
+  sedan: 92,
+  boxVan: 75,
+  motorcycle: 145, // higher whine, distinct from cars
+  doubleTrailer: 48,
+};
 
 export class AudioManager {
   constructor() {

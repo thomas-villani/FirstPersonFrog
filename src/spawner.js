@@ -147,7 +147,10 @@ export class Spawner {
 
     // Wheels are forbidden from the lane's LAST sub-row — that row sits on the
     // between-lane white stripe, which is "safe" ground the frog can rest on.
-    const spread = type.wheelRowSpread;
+    // singleTrack types collapse the two wheel-rows to the same line so a single
+    // wheel sits ON a wheel-row (not between two — a motorbike at midpoint would
+    // miss the frog on either side by ~1cm and effectively be uncatchable).
+    const spread = type.singleTrack ? 0 : type.wheelRowSpread;
     const validPlacements = SUB_ROWS_PER_LANE - 1 - spread;
     if (validPlacements < 1) return;
     const firstRow = laneFirstRow(lane.laneIndex);
