@@ -208,6 +208,13 @@ export class Hud {
     if (this.levelUpEl) this.levelUpEl.style.opacity = '0';
   }
 
+  // Used by the debug-menu warp cheat — keeps the HUD level counter in sync
+  // when Game._buildLevel is called outside the normal bank-crossing flow.
+  setLevel(n) {
+    this.level = n;
+    this._renderLevel();
+  }
+
   _renderLevel() {
     if (this.levelEl) this.levelEl.textContent = `LEVEL ${this.level}`;
   }

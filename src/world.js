@@ -464,25 +464,51 @@ export function placeObstaclesForLevel(level, scene, laneCount) {
     used.add(key);
     const type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
     const mesh = buildObstacleMesh(type);
-    mesh.position.set(cellXToWorldX(cellX), type.height / 2, rowToZ(row));
+    mesh.position.set(cellXToWorldX(cellX), 0, rowToZ(row));
     scene.add(mesh);
     out.push({ row, cellX, kind: type.kind, mesh });
   }
   return out;
 }
 
+// Returns an Object3D anchored so local Y=0 is the asphalt — placement just sets
+// world XZ. Cylinder obstacles (cans, bottles) lay tipped on their side with a
+// random spin, like they've been kicked around. Trash bags are a squashed sphere
+// + small knot so they read as "tied bag" instead of a black ball.
 function buildObstacleMesh(type) {
   const mat = new THREE.MeshLambertMaterial({ color: type.color });
   mat.fog = true;
-  let geom;
+
+  if (type.kind === 'trashBag') return buildTrashBagMesh(type, mat);
+
   if (type.geom === 'cylinder') {
-    geom = new THREE.CylinderGeometry(type.radius, type.radius, type.height, 12);
-  } else if (type.geom === 'sphere') {
-    geom = new THREE.SphereGeometry(type.radius, 10, 8);
-  } else {
-    geom = new THREE.BoxGeometry(type.radius * 2, type.height, type.radius * 2);
+    const geom = new THREE.CylinderGeometry(type.radius, type.radius, type.height, 12);
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.rotation.z = Math.PI / 2;
+    mesh.rotation.y = Math.random() * Math.PI * 2;
+    mesh.position.y = type.radius;
+    return mesh;
   }
-  return new THREE.Mesh(geom, mat);
+
+  const geom = new THREE.BoxGeometry(type.radius * 2, type.height, type.radius * 2);
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.position.y = type.height / 2;
+  return mesh;
+}
+
+function buildTrashBagMesh(type, mat) {
+  const group = new THREE.Group();
+  const yScale = 0.78;
+  const bodyGeom = new THREE.SphereGeometry(type.radius, 12, 8);
+  const body = new THREE.Mesh(bodyGeom, mat);
+  body.scale.y = yScale;
+  body.position.y = type.radius * yScale;
+  group.add(body);
+  const knotGeom = new THREE.SphereGeometry(type.radius * 0.4, 8, 6);
+  const knot = new THREE.Mesh(knotGeom, mat);
+  knot.position.y = type.radius * yScale * 1.85;
+  group.add(knot);
+  return group;
 }
 
 function randInRange(lo, hi) {

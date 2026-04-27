@@ -97,7 +97,7 @@ export const OBSTACLE_TYPES = [
   { kind: 'sodaCanRed',    radius: 0.10, height: 0.22, color: 0xcc1111, geom: 'cylinder' },
   { kind: 'sodaCanSilver', radius: 0.10, height: 0.22, color: 0xc0c0c0, geom: 'cylinder' },
   { kind: 'sodaBottle',    radius: 0.07, height: 0.32, color: 0x2a8a3a, geom: 'cylinder' },
-  { kind: 'trashBag',      radius: 0.32, height: 0.45, color: 0x202020, geom: 'sphere' },
+  { kind: 'trashBag',      radius: 0.32, height: 0.45, color: 0x4a4a52, geom: 'sphere' },
 ];
 export const OBSTACLES_PER_LEVEL_BASE = 1;
 export const OBSTACLES_PER_LEVEL_CAP = 4;
@@ -141,22 +141,22 @@ export function pickThemeForLevel(level) {
 // `spawner.js` constrains wheel rows to the lane's first..secondToLast, so the frog can rest
 // on the stripe without being hit. Vehicle bodies also stay strictly inside the lane.
 //
-// Lane count grows with level: ceil(level/2), capped at MAX_LANES.
-//   levels 1–2 → 1 lane    levels 9–10 → 5 lanes
-//   levels 3–4 → 2 lanes   levels 11–12 → 6 lanes
-//   levels 5–6 → 3 lanes   levels 13–14 → 7 lanes
-//   levels 7–8 → 4 lanes   levels 15+   → 8 lanes (capped)
+// Lane count grows with level: ceil(level/2), uncapped — the road keeps getting
+// absurdly wider forever.
+//   levels 1–2 → 1 lane     levels 31–32 → 16 lanes
+//   levels 3–4 → 2 lanes    levels 49–50 → 25 lanes
+//   ... etc, ad infinitum
 //
 // Direction follows a divided-road convention: east lanes contiguously near the start,
 // then west lanes contiguously near the goal. East count = ceil(laneCount / 2).
 //   1: E         2: EW        3: EEW        4: EEWW
 //   5: EEEWW     6: EEEWWW    7: EEEEWWW    8: EEEEWWWW
 //
-// Once we hit MAX_LANES, further level-ups stop adding lanes and instead start applying
-// random direction flips to individual lanes (so the contiguous E/W blocks get scrambled
-// the deeper you go) and densify spawns. See `buildLanesForLevel` below.
+// At CHAOS_START_LEVEL (16, the level we used to plateau at 8 lanes), per-lane
+// direction flips and denser spawn intervals start ramping in. At level 30+ the
+// rush-hour override can fire, forcing every lane in one direction for a crossing.
+// See `buildLanesForLevel` below.
 export const START_ROW = 0;
-export const MAX_LANES = 8;
 export const LEVELS_PER_LANE_STEP = 2; // 2 levels per lane added
 
 // --- Vehicle types ---
@@ -348,10 +348,9 @@ export const FOCUS_ENGINE_LOWPASS_HZ = 350;  // engine voices LP cutoff while fo
 
 // --- Recombobulation (Lv 4 unlock) ---
 // Charges absorb a fatal hit instead of consuming a life. Splat → unsplat cutscene
-// plays; frog resumes at the same row+cellX it died on. Charges are awarded only
-// on tier-up (additive, capped per tier). Used charges stay used until next tier-up.
-export const RECOMB_CHARGES_BY_TIER = [0, 1, 2, 3];   // cap by tier (0 = locked)
-export const RECOMB_GRANT_BY_TIER   = [0, 1, 2, 3];   // +N awarded on tier-up, clamped to cap
+// plays; frog resumes at the same row+cellX it died on. Charges refill to the
+// tier cap at the start of every game level — unused charges don't carry over.
+export const RECOMB_CHARGES_BY_TIER = [0, 1, 2, 3];   // refill cap by tier (0 = locked)
 export const RECOMB_CUTSCENE_DURATION = 1.5;          // s — total cutscene length
 export const RECOMB_SQUASH_DURATION  = 0.35;          // s — splat-down phase
 export const RECOMB_HOLD_DURATION    = 0.30;          // s — flat hold
@@ -398,7 +397,7 @@ export function laneFirstRow(laneIndex) {
 
 // --- Level → world parameters ---
 export function laneCountForLevel(level) {
-  return Math.max(1, Math.min(MAX_LANES, Math.ceil(level / LEVELS_PER_LANE_STEP)));
+  return Math.max(1, Math.ceil(level / LEVELS_PER_LANE_STEP));
 }
 export function totalSubRowsForLevel(level) {
   return laneCountForLevel(level) * SUB_ROWS_PER_LANE;
@@ -406,8 +405,17 @@ export function totalSubRowsForLevel(level) {
 export function goalRowForLevel(level) {
   return totalSubRowsForLevel(level) + 1;
 }
-// First level at which the lane count is capped — beyond this we apply chaos modifiers.
-export const CAPPED_AT_LEVEL = MAX_LANES * LEVELS_PER_LANE_STEP; // 16
+// First level at which chaos modifiers start kicking in. Used to be the lane-count
+// cap; now lanes scale forever and this just gates the chaos ramp.
+export const CHAOS_START_LEVEL = 16;
+
+// Rush-hour override: at level 30+, each crossing has a chance of forcing every
+// lane in one direction. Levels 30–49 always pick eastbound (single option in
+// the roll); level 50+ rolls eastbound or westbound (both options).
+export const RUSH_HOUR_MIN_LEVEL = 30;
+export const RUSH_HOUR_BIDIR_LEVEL = 50;
+export const RUSH_HOUR_PROB_SINGLE = 0.25;
+export const RUSH_HOUR_PROB_BIDIR  = 0.35;
 
 // East lane count for a given total lane count. East lanes go at low laneIndex; west
 // lanes fill the remainder.
@@ -415,23 +423,46 @@ export function eastCountForLanes(n) {
   return Math.max(0, Math.ceil(n / 2));
 }
 
+// Picks a rush-hour direction for the given level, or null if it doesn't fire.
+// Returns +1 (eastbound) or -1 (westbound).
+function pickRushHour(level) {
+  if (level < RUSH_HOUR_MIN_LEVEL) return null;
+  if (level >= RUSH_HOUR_BIDIR_LEVEL) {
+    if (Math.random() >= RUSH_HOUR_PROB_BIDIR) return null;
+    return Math.random() < 0.5 ? +1 : -1;
+  }
+  if (Math.random() >= RUSH_HOUR_PROB_SINGLE) return null;
+  return +1;
+}
+
 // --- Build the LANES config for a given level ---
-// Levels 1..CAPPED_AT_LEVEL: clean East-then-West pattern with templates cycled per lane.
-// Levels > CAPPED_AT_LEVEL: lane count stays at MAX_LANES, but:
+// Returns { lanes, rushHour }. `rushHour` is +1/-1 if the rush-hour override
+// fired (every lane forced to that direction, chaos flips suppressed), else null.
+//
+// Levels 1..CHAOS_START_LEVEL-1: clean East-then-West pattern, templates cycled per lane.
+// Levels >= CHAOS_START_LEVEL:
 //   - each lane's direction has a flipProbability of being inverted (chaos),
 //   - spawnInterval shrinks (denser traffic).
+// Levels >= RUSH_HOUR_MIN_LEVEL: rush-hour override may fire (see pickRushHour).
 export function buildLanesForLevel(level) {
   const count = laneCountForLevel(level);
   const east = eastCountForLanes(count);
 
-  const excess = Math.max(0, level - CAPPED_AT_LEVEL);
-  const flipProbability = Math.min(0.45, excess * 0.04); // 0%..45% per lane
-  const densityMult = excess > 0 ? Math.max(0.4, 1 - excess * 0.04) : 1;
+  const excess = Math.max(0, level - CHAOS_START_LEVEL);
+  const flipProbability = Math.min(0.65, excess * 0.04); // 0%..65% per lane
+  const densityMult = excess > 0 ? Math.max(0.30, 1 - excess * 0.04) : 1;
+
+  const rushHour = pickRushHour(level);
 
   const lanes = [];
   for (let i = 0; i < count; i++) {
-    let direction = i < east ? +1 : -1;
-    if (flipProbability > 0 && Math.random() < flipProbability) direction = -direction;
+    let direction;
+    if (rushHour !== null) {
+      direction = rushHour;
+    } else {
+      direction = i < east ? +1 : -1;
+      if (flipProbability > 0 && Math.random() < flipProbability) direction = -direction;
+    }
 
     const tpl = LANE_TEMPLATES[i % LANE_TEMPLATES.length];
     lanes.push({
@@ -445,5 +476,5 @@ export function buildLanesForLevel(level) {
       mix: tpl.mix,
     });
   }
-  return lanes;
+  return { lanes, rushHour };
 }

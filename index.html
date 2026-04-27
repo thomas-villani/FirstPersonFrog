@@ -236,6 +236,63 @@
         font-size: 1.0rem;
         letter-spacing: 0.05em;
       }
+      /* Pause-screen debug panel — testing toggles only. Lives inside #overlay
+         so it shows whenever the overlay does. cursor:default + stopPropagation
+         on its click events so a checkbox toggle doesn't grab pointer-lock. */
+      #debug-menu {
+        margin-top: 2rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.15em;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        padding: 0.7rem 1rem;
+        background: rgba(20, 20, 20, 0.55);
+        cursor: default;
+        text-align: left;
+        min-width: 18rem;
+      }
+      #debug-menu .dm-title {
+        font-size: 0.7rem;
+        letter-spacing: 0.25em;
+        opacity: 0.6;
+        margin-bottom: 0.5rem;
+      }
+      #debug-menu .dm-row {
+        margin: 0.3rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      #debug-menu label {
+        cursor: pointer;
+      }
+      #debug-menu input[type="number"] {
+        font-family: monospace;
+        font-size: 0.75rem;
+        width: 3.5rem;
+        background: #111;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 0.15rem 0.3rem;
+      }
+      #debug-menu button {
+        font-family: monospace;
+        font-size: 0.7rem;
+        letter-spacing: 0.15em;
+        cursor: pointer;
+        padding: 0.2rem 0.7rem;
+        background: #222;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      #debug-menu button:hover {
+        background: #333;
+      }
+      #dm-status {
+        margin-top: 0.5rem;
+        font-size: 0.7rem;
+        opacity: 0.65;
+        min-height: 1em;
+      }
     </style>
   </head>
   <body>
@@ -267,6 +324,21 @@
     <div id="overlay">
       <div>CLICK TO PLAY</div>
       <small>WASD / arrow keys to hop · mouse to look · ESC to pause</small>
+      <div id="debug-menu">
+        <div class="dm-title">DEBUG · TESTING ONLY</div>
+        <div class="dm-row">
+          <label><input type="checkbox" id="dm-invuln"> INVULNERABLE</label>
+        </div>
+        <div class="dm-row">
+          <label><input type="checkbox" id="dm-allskills"> ALL SKILLS UNLOCKED</label>
+        </div>
+        <div class="dm-row">
+          <span>WARP TO LEVEL</span>
+          <input type="number" id="dm-level" min="1" max="99" value="1">
+          <button id="dm-warp" type="button">GO</button>
+        </div>
+        <div id="dm-status"></div>
+      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

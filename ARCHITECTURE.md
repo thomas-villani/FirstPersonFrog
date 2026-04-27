@@ -67,7 +67,7 @@ Canonical reference is in [`CLAUDE.md`](./CLAUDE.md). Quick recap:
 ### Foundation
 
 - **`main.js`** — bootstraps `Game` and runs the RAF loop.
-- **`config.js`** — every tunable plus the per-level builders: `laneCountForLevel`, `goalRowForLevel`, `buildLanesForLevel`. Past level 16 (`CAPPED_AT_LEVEL`), each lane has a per-level probability of being direction-flipped and spawn intervals scale down.
+- **`config.js`** — every tunable plus the per-level builders: `laneCountForLevel`, `goalRowForLevel`, `buildLanesForLevel`. Lane count is uncapped (`ceil(level / 2)`). At level 16 (`CHAOS_START_LEVEL`), per-lane direction flips and denser spawn intervals start ramping in. At level 30+ the rush-hour override may fire (every lane forced to one direction); `buildLanesForLevel` returns `{ lanes, rushHour }`.
 - **`game.js`** — owns the state machine, the scene rebuild on every crossing (`_buildLevel`), the intro tween, and the death-cutscene handoff. The camera is created once and re-parented across rebuilds, so player yaw/pitch persist across level transitions.
 
 ### Player

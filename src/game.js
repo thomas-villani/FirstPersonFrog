@@ -24,7 +24,7 @@ import {
   WORLD_TIME_SCALE_FOCUS,
   FOCUS_DURATIONS,
   RECOMB_CHARGES_BY_TIER,
-  RECOMB_GRANT_BY_TIER,
+  FROG_LEVEL_CAP,
   laneCountForLevel,
   goalRowForLevel,
   buildLanesForLevel,
@@ -68,10 +68,15 @@ export class Game {
     this.hud.renderLives(this.score.lives);
     this.hud.renderFrogLevel(this.score.frogLevel, this.score.xp);
 
+    // Debug-menu cheat flags. Persist across deaths/runs (toggled from the
+    // pause overlay). Honored by `_applySkills` and the collision check.
+    this.cheatInvuln = false;
+    this.cheatAllSkills = false;
+
     // Skills + bug + tongue subsystems. Skills must be seeded BEFORE Tongue is
     // constructed, since Tongue captures the skills reference for tier lookups.
     this.skills = new Skills();
-    this.skills.update(this.score.frogLevel);
+    this._applySkills(this.score.frogLevel);
     this.bugs = new BugManager();
     this.tongue = new Tongue(this.camera, this.bugs, this.skills, this.audio, this.score);
     // Spaced-out level-up toast queue — drained from update(dt) so multiple
@@ -91,9 +96,6 @@ export class Game {
     // Frog Focus: rising/falling-edge tracking + DOM tint handle.
     this._focusActive = false;
     this.fxFocusEl = document.getElementById('focus-tint');
-
-    // Recombobulation: highest tier seen this run. Drives one-shot tier-up grants.
-    this._recombTierLast = 0;
 
     this._buildLevel(1);
 
@@ -130,8 +132,14 @@ export class Game {
       }
       return false;
     };
-    this.spawner = new Spawner(this.scene, buildLanesForLevel(level), this.audio);
+    const { lanes, rushHour } = buildLanesForLevel(level);
+    this.spawner = new Spawner(this.scene, lanes, this.audio);
     this.spawner.setSpeedMultiplier(1 + SPEED_RAMP_PER_LEVEL * (level - 1));
+    if (rushHour !== null) {
+      this.hud.showMilestoneToast(
+        rushHour > 0 ? 'RUSH HOUR — EASTBOUND' : 'RUSH HOUR — WESTBOUND'
+      );
+    }
 
     // Seed the road with traffic from level 2 onward — level 1 stays a clean intro,
     // but later levels should already feel busy when the new world fades in.
@@ -155,6 +163,8 @@ export class Game {
         this.audio.playPickup();
       }
     };
+
+    this._refillRecombCharges();
   }
 
   onLockAcquired() {
@@ -162,10 +172,9 @@ export class Game {
     // The intro flag is already true (or doesn't matter for retry — we skip it).
     if (this.state === 'GAMEOVER') {
       this.score.reset();
-      this.skills.update(this.score.frogLevel);
+      this._applySkills(this.score.frogLevel);
       this._levelUpToastQueue.length = 0;
       this._levelUpToastTimer = 0;
-      this._recombTierLast = 0;
       this._focusActive = false;
       if (this.fxFocusEl) this.fxFocusEl.style.opacity = '0';
       this.hud.resetForNewRun();
@@ -256,19 +265,42 @@ export class Game {
     this._setFocusActive(true);
   }
 
-  // Apply Recombobulation tier-up grants. Called after every `skills.update`.
-  // Charges are awarded ONLY on tier-up: T1 grants +1, T2 grants +2, T3 grants +3,
-  // each clamped to the new tier's cap. Used charges stay used until next tier-up.
-  _applyRecombGrants() {
-    const newTier = this.skills.tier('recombobulation');
-    if (newTier <= this._recombTierLast) return;
-    for (let t = this._recombTierLast + 1; t <= newTier; t++) {
-      const grant = RECOMB_GRANT_BY_TIER[t] ?? 0;
-      const cap = RECOMB_CHARGES_BY_TIER[t] ?? 0;
-      this.score.recombCharges = Math.min(cap, this.score.recombCharges + grant);
-    }
-    this._recombTierLast = newTier;
-    this.hud.renderRecombCharges(this.score.recombCharges, newTier);
+  // Refill Recombobulation charges to the tier cap. Called once per game-level
+  // build, so each crossing starts with a full set. (Earlier the grant was
+  // one-shot at frog-level tier-up, but per-game-level felt better in playtest.)
+  _refillRecombCharges() {
+    const tier = this.skills.tier('recombobulation');
+    const cap = RECOMB_CHARGES_BY_TIER[tier] ?? 0;
+    this.score.recombCharges = cap;
+    this.hud.renderRecombCharges(cap, tier);
+  }
+
+  // Skill table is keyed by frog level. The "all skills" debug cheat short-
+  // circuits the lookup level to FROG_LEVEL_CAP so every tier registers as
+  // unlocked, regardless of actual XP.
+  _applySkills(level) {
+    this.skills.update(this.cheatAllSkills ? FROG_LEVEL_CAP : level);
+  }
+
+  // --- Debug-menu cheats (DebugMenu wires DOM controls to these) ---
+
+  cheatSetInvuln(on) {
+    this.cheatInvuln = !!on;
+  }
+
+  cheatSetAllSkills(on) {
+    this.cheatAllSkills = !!on;
+    this._applySkills(this.score.frogLevel);
+    this._refillRecombCharges();
+  }
+
+  cheatWarpToLevel(level) {
+    if (!Number.isFinite(level) || level < 1) return;
+    if (this._focusActive) this._setFocusActive(false);
+    if (this.deathCutscene) this._finishDeathCutscene();
+    if (this.recombCutscene) this._finishRecombCutscene();
+    this._buildLevel(level);
+    this.hud.setLevel(level);
   }
 
   _beginRecombCutscene() {
@@ -432,7 +464,7 @@ export class Game {
     // for this frame — getting wheel-killed shouldn't also pay out a GRAZED.
     // _beginDeathCutscene wipes per-vehicle near-miss state too, so stale
     // approaches don't resolve on the first frame after respawn.
-    const hit = checkCollision(this.frog, this.spawner.vehicles);
+    const hit = this.cheatInvuln ? null : checkCollision(this.frog, this.spawner.vehicles);
     if (hit) {
       // Recombobulation intercepts a fatal hit if the player has charges. No
       // life lost; cutscene plays splat → unsplat; frog resumes at impact.
@@ -477,14 +509,10 @@ export class Game {
         const levelUps = this.score.drainLevelUps();
         if (levelUps) {
           for (const newLevel of levelUps) {
-            this.skills.update(newLevel);
+            this._applySkills(newLevel);
             const label = levelUpLabel(newLevel) ?? `FROG LEVEL ${newLevel}`;
             this._levelUpToastQueue.push(label);
           }
-          // Recomb charges are awarded only on tier-up. Run after all level-ups
-          // for this crossing so a 0→2 jump in a single bank only grants once
-          // for each tier crossed (T1 grant + T2 grant), capped at T2 max.
-          this._applyRecombGrants();
           this.audio.playLevelUp();
         }
         const newLevel = this.hud.onWin();

@@ -58,7 +58,8 @@ export class Score {
     this.focusMeter = 0;
     this.focusActive = false;
 
-    // Recombobulation (Lv 4+). Charges intercept a fatal hit. Awarded on tier-up.
+    // Recombobulation (Lv 4+). Charges intercept a fatal hit. Game refills to
+    // the tier cap on each game-level build.
     this.recombCharges = 0;
   }
 
