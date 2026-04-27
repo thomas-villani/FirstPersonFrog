@@ -78,7 +78,13 @@ export class Game {
     this.skills = new Skills();
     this._applySkills(this.score.frogLevel);
     this.bugs = new BugManager();
-    this.tongue = new Tongue(this.camera, this.bugs, this.skills, this.audio, this.score);
+    this.tongue = new Tongue(
+      this.camera,
+      this.bugs,
+      this.skills,
+      this.audio,
+      (bug) => this._handleBugCollect(bug),
+    );
     // Spaced-out level-up toast queue — drained from update(dt) so multiple
     // unlocks in one crossing don't visually stack.
     this._levelUpToastQueue = [];
@@ -158,10 +164,11 @@ export class Game {
       // Mercy auto-collect: any bug at the frog's exact landing cell is grabbed
       // automatically. Ensures the player never gets stuck on a bug under-foot.
       const bug = this.bugs.tryCollectAt(this.frog.row, this.frog.cellX);
-      if (bug) {
-        this.score.addBugPickup();
-        this.audio.playPickup();
-      }
+      if (bug) this._handleBugCollect(bug);
+    };
+    this.frog.onBlocked = () => {
+      if (this.state !== 'PLAYING') return;
+      this.audio.playBlocked();
     };
 
     this._refillRecombCharges();
@@ -265,6 +272,22 @@ export class Game {
     this._setFocusActive(true);
   }
 
+  // Centralized bug-pickup routing. Regular bugs feed score + audio + focus
+  // meter (via score.addBugPickup); extra-life bugs grant +1 life and a
+  // distinct toast/SFX, with no combo bump or meter fill — the reward is the
+  // life itself, not score chaining.
+  _handleBugCollect(bug) {
+    if (bug.kind === 'extraLife') {
+      this.score.lives++;
+      this.hud.renderLives(this.score.lives);
+      this.hud.showMilestoneToast('+1 LIFE!');
+      this.audio.playLevelUp();
+      return;
+    }
+    this.score.addBugPickup();
+    this.audio.playPickup();
+  }
+
   // Refill Recombobulation charges to the tier cap. Called once per game-level
   // build, so each crossing starts with a full set. (Earlier the grant was
   // one-shot at frog-level tier-up, but per-game-level felt better in playtest.)
@@ -313,6 +336,7 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
+      v.nearMiss.threadedHopArmed = false;
       v.nearMiss.lastSign = 0;
     }
     this.recombCutscene = new RecombCutscene(this.scene, this.camera, this.frog);
@@ -350,6 +374,7 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
+      v.nearMiss.threadedHopArmed = false;
       v.nearMiss.lastSign = 0;
     }
     this.deathCutscene = new DeathCutscene(this.scene, this.camera, this.frog, vehicle);
@@ -492,7 +517,7 @@ export class Game {
           this.hud.onNearMiss();
           const label =
             tier === 'THREADED' ? `THREADED! +${earned.toLocaleString()}` :
-            tier === 'UNDER'    ? `UNDER +${earned.toLocaleString()}` :
+            tier === 'UNDER'    ? `DOWN UNDER +${earned.toLocaleString()}` :
             tier === 'GRAZED'   ? `GRAZED +${earned.toLocaleString()}` : null;
           if (label) this.hud.showMilestoneToast(label);
         }
@@ -501,7 +526,12 @@ export class Game {
         // Drop focus before the bank — bankCrossing wipes the meter, so a
         // 1-frame stale `_focusActive` would otherwise straddle the level rebuild.
         if (this._focusActive) this._setFocusActive(false);
-        this.score.bankCrossing(this.level);
+        const { untouchableBonus } = this.score.bankCrossing(this.level);
+        // Untouchable refills the focus meter to full as part of its perk —
+        // gated on the skill being unlocked (no point filling a hidden meter).
+        if (untouchableBonus > 0 && this.skills.tier('frogFocus') > 0) {
+          this.score.focusMeter = 1;
+        }
         // Drain any frog-level-ups the bank just produced. Apply skill updates
         // immediately (subsequent skills queries see the new tier) and queue
         // toasts spaced out by _pumpLevelUpToasts so multiple unlocks don't

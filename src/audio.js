@@ -154,6 +154,28 @@ export class AudioManager {
     osc.stop(now + 0.05);
   }
 
+  // Soft low thud for a rejected hop — frog couldn't go that way (obstacle or
+  // playfield edge). Distinct from playHop (wet splat) and playSquish (death):
+  // a muffled tap with no body, so it reads as "nope" without alarming.
+  playBlocked() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const dur = 0.09;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(170, now);
+    osc.frequency.exponentialRampToValueAtTime(95, now + dur);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+  }
+
   // Whip sound for the tongue flick: highpass-filtered noise with descending cutoff.
   playTongueFlick() {
     if (!this.ctx) return;

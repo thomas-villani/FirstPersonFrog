@@ -45,6 +45,10 @@ export class Frog {
     // Optional predicate: if set, returning true rejects a hop into that cell.
     // Used for blocking road obstacles (soda cans etc).
     this.isBlocked = null;
+    // Optional callback fired when an attempted hop is rejected because the
+    // target cell is blocked OR clamped to the same cell at a playfield edge.
+    // Fires only from IDLE — mid-hop input is silently dropped (hard-commit).
+    this.onBlocked = null;
 
     this._applyGridPosition();
   }
@@ -106,8 +110,14 @@ export class Frog {
     if (newRow > this.goalRow) newRow = this.goalRow;
     if (newCell < -STRAFE_MAX) newCell = -STRAFE_MAX;
     if (newCell > STRAFE_MAX) newCell = STRAFE_MAX;
-    if (newRow === this.row && newCell === this.cellX) return false;
-    if (this.isBlocked && this.isBlocked(newRow, newCell)) return false;
+    if (newRow === this.row && newCell === this.cellX) {
+      if (this.onBlocked) this.onBlocked();
+      return false;
+    }
+    if (this.isBlocked && this.isBlocked(newRow, newCell)) {
+      if (this.onBlocked) this.onBlocked();
+      return false;
+    }
 
     this._hopStart.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
     this._hopEnd.set(cellXToWorldX(newCell), 0, rowToZ(newRow));

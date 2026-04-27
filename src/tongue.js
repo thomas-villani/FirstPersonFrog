@@ -26,12 +26,13 @@ const TIP_COLOR = 0xd6256e;
 //
 // Animation curve: 0.0–0.35 extend, 0.35–0.65 hold, 0.65–1.0 retract.
 export class Tongue {
-  constructor(camera, bugs, skills, audio, score) {
+  constructor(camera, bugs, skills, audio, onCollect) {
     this.camera = camera;
     this.bugs = bugs;
     this.skills = skills;
     this.audio = audio;
-    this.score = score;
+    // Game-owned handler for a captured bug (routes regular vs. extra-life).
+    this.onCollect = onCollect;
     this._cooldown = 0;
     this._activeElapsed = 0;
     this._activeRange = 0;
@@ -108,10 +109,7 @@ export class Tongue {
     const bug = this.bugs.tryCollectInCapsule(origin, dir, range, TONGUE_CAPSULE_RADIUS);
 
     this.audio.playTongueFlick();
-    if (bug) {
-      this.score.addBugPickup();
-      this.audio.playPickup();
-    }
+    if (bug && this.onCollect) this.onCollect(bug);
 
     this._cooldown = TONGUE_COOLDOWN;
     this._active = true;

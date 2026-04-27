@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  BUGS_PER_LEVEL,
+  bugCountForLevel,
   BUG_RISK_WEIGHT,
   STRAFE_MAX,
   SUB_ROWS_PER_LANE,
@@ -23,6 +23,12 @@ const BUG_BODY_MAT = new THREE.MeshLambertMaterial({
   color: 0xe8a838,
   emissive: 0x402008,
 });
+// Extra-life variant: bright gold + strong emissive so it pops against the road
+// from a 5cm POV. Mesh is also scaled up in placeBugsForLevel for visibility.
+const BUG_EXTRALIFE_BODY_MAT = new THREE.MeshLambertMaterial({
+  color: 0xffd84a,
+  emissive: 0x806020,
+});
 const BUG_HEAD_GEOM = new THREE.SphereGeometry(0.038, 8, 6);
 const BUG_HEAD_MAT = new THREE.MeshLambertMaterial({ color: 0x3a2210 });
 const BUG_EYE_GEOM = new THREE.SphereGeometry(0.013, 6, 5);
@@ -36,20 +42,29 @@ const BUG_ANT_GEOM = new THREE.CylinderGeometry(0.0045, 0.003, 0.062, 5);
 
 const BUG_BODY_Y = 0.05;
 const BUG_ROT_SPEED = 0.6; // radians/sec — slow Y spin keeps the bug visible from 5cm POV
+const BUG_EXTRALIFE_SCALE = 1.8;
+const BUG_EXTRALIFE_HOVER_AMP = 0.04;
+const BUG_EXTRALIFE_HOVER_SPEED = 2.4;
+const BUG_EXTRALIFE_ROT_SPEED = 1.6; // faster spin so it reads as "special" at distance
 
 class Bug {
-  constructor(scene, row, cellX) {
+  constructor(scene, row, cellX, kind = 'normal') {
     this.row = row;
     this.cellX = cellX;
+    this.kind = kind;
     this.scene = scene;
+    this._tElapsed = 0;
 
     this.group = new THREE.Group();
     this.group.position.set(cellXToWorldX(cellX), 0, rowToZ(row));
     this.group.rotation.y = Math.random() * Math.PI * 2;
 
     // Amber rounded body — flattened sphere reads as a beetle carapace, not a
-    // cardboard box. Scale gives an ellipsoid wider in X/Z than in Y.
-    const body = new THREE.Mesh(BUG_BODY_GEOM, BUG_BODY_MAT);
+    // cardboard box. Scale gives an ellipsoid wider in X/Z than in Y. Extra-
+    // life bugs swap to the gold material; the whole group is then scaled up
+    // for visibility (handled below).
+    const bodyMat = kind === 'extraLife' ? BUG_EXTRALIFE_BODY_MAT : BUG_BODY_MAT;
+    const body = new THREE.Mesh(BUG_BODY_GEOM, bodyMat);
     body.position.y = BUG_BODY_Y;
     body.scale.set(1.5, 0.6, 1.3);
     this.group.add(body);
@@ -88,11 +103,20 @@ class Bug {
       this.group.add(ant);
     }
 
+    if (kind === 'extraLife') this.group.scale.setScalar(BUG_EXTRALIFE_SCALE);
+
     scene.add(this.group);
   }
 
   update(dt) {
-    this.group.rotation.y += BUG_ROT_SPEED * dt;
+    this._tElapsed += dt;
+    if (this.kind === 'extraLife') {
+      this.group.rotation.y += BUG_EXTRALIFE_ROT_SPEED * dt;
+      this.group.position.y =
+        BUG_EXTRALIFE_HOVER_AMP * (1 + Math.sin(this._tElapsed * BUG_EXTRALIFE_HOVER_SPEED));
+    } else {
+      this.group.rotation.y += BUG_ROT_SPEED * dt;
+    }
   }
 
   worldPos() {
@@ -120,6 +144,10 @@ export class BugManager {
   // (deadly territory), ~30% on the lane's safe stripe (last sub-row). Ensures no
   // duplicate (row, cellX) cells. `excludeCells` is an optional list of
   // {row, cellX} occupied by blocking obstacles — bugs avoid those.
+  //
+  // On every even level, also places ONE extra-life bug at a fringe cellX in a
+  // danger lane (wheel-path row). Collected like any bug, but the caller
+  // grants +1 life instead of regular bug points.
   placeBugsForLevel(level, scene, excludeCells = null) {
     this.disposeAll();
 
@@ -129,9 +157,17 @@ export class BugManager {
     if (excludeCells) {
       for (const c of excludeCells) used.add(`${c.row}:${c.cellX}`);
     }
+
+    // Extra-life bug first (even levels only) so its fringe + danger-lane cell
+    // is reserved before the regular placement loop fills the easier cells.
+    if (level >= 2 && level % 2 === 0) {
+      this._placeExtraLifeBug(level, scene, laneCount, used);
+    }
+
+    const target = bugCountForLevel(level);
     let attempts = 0;
-    const maxAttempts = BUGS_PER_LEVEL * 12; // failsafe against unlucky cell collisions
-    while (this.bugs.length < BUGS_PER_LEVEL && attempts < maxAttempts) {
+    const maxAttempts = target * 12; // failsafe against unlucky cell collisions
+    while (this.bugs.length - this._extraLifeCount() < target && attempts < maxAttempts) {
       attempts++;
       const lane = Math.floor(Math.random() * laneCount);
       const first = laneFirstRow(lane);
@@ -149,6 +185,33 @@ export class BugManager {
       if (used.has(key)) continue;
       used.add(key);
       this.bugs.push(new Bug(scene, row, cellX));
+    }
+  }
+
+  _extraLifeCount() {
+    let n = 0;
+    for (const b of this.bugs) if (b.kind === 'extraLife') n++;
+    return n;
+  }
+
+  // Tries the outer two fringe columns on either side of the road; for each
+  // tries a random lane's wheel-path row. Skips cells already used by an
+  // obstacle or another bug. If nothing fits, silently no-ops — the perk just
+  // doesn't appear that level (rare, only happens with unlucky overlap).
+  _placeExtraLifeBug(level, scene, laneCount, used) {
+    const fringeCells = [STRAFE_MAX, -STRAFE_MAX, STRAFE_MAX - 1, -(STRAFE_MAX - 1)];
+    const laneOrder = shuffledRange(laneCount);
+    for (const cellX of fringeCells) {
+      for (const lane of laneOrder) {
+        const first = laneFirstRow(lane);
+        const offset = Math.floor(Math.random() * (SUB_ROWS_PER_LANE - 1));
+        const row = first + offset;
+        const key = `${row}:${cellX}`;
+        if (used.has(key)) continue;
+        used.add(key);
+        this.bugs.push(new Bug(scene, row, cellX, 'extraLife'));
+        return;
+      }
     }
   }
 
@@ -215,4 +278,14 @@ export class BugManager {
 
 function randInt(lo, hi) {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
+function shuffledRange(n) {
+  const arr = [];
+  for (let i = 0; i < n; i++) arr.push(i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }

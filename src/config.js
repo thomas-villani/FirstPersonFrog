@@ -71,7 +71,7 @@ export const DIVIDER_POST_COLOR = 0x404040;
 // player has a visible X reference while crossing.
 export const PEBBLE_COLOR = 0xeae0c8;
 export const PEBBLE_SIZE = 0.22;          // diameter of each marker (fits within STRIPE_WIDTH_DIVIDER)
-export const PEBBLE_HEIGHT = 0.07;        // low enough not to occlude oncoming traffic from 5cm POV
+export const PEBBLE_HEIGHT = 0.04;        // low enough not to occlude oncoming traffic from 5cm POV
 
 // Flattened road garbage — purely decorative texture, scattered randomly on the road.
 export const GARBAGE_COUNT = 60;
@@ -296,6 +296,11 @@ export const SURVIVAL_PAYOUTS = [500, 1000, 2000, 4000, 8000, 16000];
 export const SCORE_BUG_BASE = 100;
 export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
 
+// Untouchable: awarded on a crossing if the player neither died nor used a
+// Recombobulation charge during the level just completed. Scales with level.
+// If the Frog Focus skill is unlocked, the focus meter is also refilled to full.
+export const UNTOUCHABLE_BONUS_BASE = 1000;
+
 // Near-miss proximity (used by collision.detectNearMisses).
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
 
@@ -311,8 +316,14 @@ export const FROG_LEVEL_CAP = 17;
 // --- Bugs ---
 // Placed at level start in `bugs.placeBugsForLevel`. BUG_RISK_WEIGHT = chance a
 // given bug lands on a wheel-path sub-row (deadly) instead of a safe stripe.
-export const BUGS_PER_LEVEL = 4;
+// Bug count scales with level (more lanes → more bugs to find), capped so a
+// level isn't drowning in collectibles.
+export const BUGS_PER_LEVEL_BASE = 4;
+export const BUGS_PER_LEVEL_CAP = 20;
 export const BUG_RISK_WEIGHT = 0.7;
+export function bugCountForLevel(level) {
+  return Math.min(BUGS_PER_LEVEL_CAP, BUGS_PER_LEVEL_BASE + Math.floor(level / 3));
+}
 
 // --- Tongue flick ---
 // Range = TONGUE_TIER_RANGES[tier] * CELL_WIDTH. Index 0 = locked (no skill).

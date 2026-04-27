@@ -13,6 +13,7 @@ import {
   SURVIVAL_PAYOUTS,
   SCORE_BUG_BASE,
   CROSSING_BASE_BONUS,
+  UNTOUCHABLE_BONUS_BASE,
   HIGH_SCORE_KEY,
   XP_PER_LEVEL_BASE,
   FROG_LEVEL_CAP,
@@ -61,6 +62,12 @@ export class Score {
     // Recombobulation (Lv 4+). Charges intercept a fatal hit. Game refills to
     // the tier cap on each game-level build.
     this.recombCharges = 0;
+
+    // Untouchable tracking — set during the level if the player dies or burns
+    // a recomb charge. Both must stay false through the crossing for the
+    // Untouchable bonus to fire. Reset inside bankCrossing.
+    this._diedThisLevel = false;
+    this._recombUsedThisLevel = false;
   }
 
   reset() {
@@ -79,6 +86,8 @@ export class Score {
     this.focusMeter = 0;
     this.focusActive = false;
     this.recombCharges = 0;
+    this._diedThisLevel = false;
+    this._recombUsedThisLevel = false;
   }
 
   totalScore() {
@@ -135,12 +144,12 @@ export class Score {
   // While Frog Focus is active (Lv 3+), THREADED/GRAZED base is multiplied by
   // FOCUS_NEAR_MISS_MULT and the focus meter fills proportional to event tier.
   addNearMiss(tier, vehicle) {
-    // UNDER is a passive flat bonus — doesn't apply or bump the combo, doesn't
-    // reset the idle timer. Without this, sitting in a safe Z gap while traffic
-    // streams overhead would farm combo for free. UNDER also doesn't fill the
-    // focus meter (passive, not a skill expression).
+    // UNDER ("DOWN UNDER") payout scales with the running combo so chaining
+    // bodies overhead is rewarding, but does NOT bump the combo or reset its
+    // idle timer — sitting passively in a safe Z gap shouldn't farm combo.
+    // UNDER also doesn't fill the focus meter (passive, not a skill expression).
     if (tier === 'UNDER') {
-      this.pending += SCORE_UNDER;
+      this.pending += Math.round(SCORE_UNDER * this.combo);
       return;
     }
     let base, bump, fill;
@@ -186,19 +195,34 @@ export class Score {
   }
 
   // Consume one Recombobulation charge if available. Returns true on success.
-  // Doesn't touch lives — recomb is the alternative to losing a life.
+  // Doesn't touch lives — recomb is the alternative to losing a life. Burning
+  // a charge also disqualifies the level from the Untouchable bonus.
   consumeRecombCharge() {
     if (this.recombCharges <= 0) return false;
     this.recombCharges--;
+    this._recombUsedThisLevel = true;
     return true;
   }
 
-  // On crossing — bank pending into total, reset per-level state. Returns the
-  // crossing bonus (so callers/HUD can flash it). Banked points double as XP;
-  // any frog-level thresholds crossed get queued onto `_levelUpQueue`.
+  // On crossing — bank pending into total, reset per-level state. Returns
+  // { crossingBonus, untouchableBonus } so the HUD/Game can react (e.g., refill
+  // focus meter on Untouchable). Banked points double as XP; any frog-level
+  // thresholds crossed get queued onto `_levelUpQueue`.
   bankCrossing(level) {
-    const bonus = CROSSING_BASE_BONUS * level;
-    this.pending += bonus;
+    // Untouchable: no death, no recomb charge burned this level. Award before
+    // banking so the bonus rolls into pending (and thus banked + XP). Toast is
+    // queued so HUD picks it up next drainToasts().
+    let untouchableBonus = 0;
+    if (!this._diedThisLevel && !this._recombUsedThisLevel) {
+      untouchableBonus = UNTOUCHABLE_BONUS_BASE * level;
+      this.pending += untouchableBonus;
+      this._toastQueue.push(`UNTOUCHABLE +${untouchableBonus.toLocaleString()}`);
+    }
+    this._diedThisLevel = false;
+    this._recombUsedThisLevel = false;
+
+    const crossingBonus = CROSSING_BASE_BONUS * level;
+    this.pending += crossingBonus;
     const delta = this.pending;
     this.banked += delta;
     this.pending = 0;
@@ -220,7 +244,7 @@ export class Score {
       this.frogLevel++;
       this._levelUpQueue.push(this.frogLevel);
     }
-    return bonus;
+    return { crossingBonus, untouchableBonus };
   }
 
   // On collision death. Returns true iff this was the final life (game over).
@@ -234,6 +258,7 @@ export class Score {
     this._milestonesFired = 0;
     this.focusMeter = 0;
     this.focusActive = false;
+    this._diedThisLevel = true;
     if (this.lives <= 0) {
       this.gameOver = true;
       if (this.banked > this.highScore) {
