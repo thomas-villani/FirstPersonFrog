@@ -60,6 +60,16 @@ export class Input {
     this.shiftHeld = e.shiftKey;
 
     if (e.repeat) return;
+
+    // Mute is a global toggle — works in any state (paused, intro, game-over)
+    // so a player can silence the page before clicking to start. Handled BEFORE
+    // the PLAYING gate below.
+    if (e.code === 'KeyM') {
+      const muted = this.game.audio.toggleMute();
+      this.game.hud.renderMuted(muted);
+      return;
+    }
+
     if (this.game.state !== 'PLAYING') return;
     const frog = this.game.frog;
     const { forward, right } = this._facingAxes();

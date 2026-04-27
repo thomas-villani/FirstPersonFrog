@@ -32,13 +32,13 @@ export function checkCollision(frog, vehicles) {
 // --- Near-miss detection (PLAN_SCORING §4.1) -------------------------------
 //
 // Three tiers, in descending value:
-//   THREADED — during this vehicle's approach, the frog HOPPED such that its
-//              path crossed at least one of the vehicle's wheel-row Z lines
-//              (start/end on a line, or a long-jump that spans one), AND at
-//              some later point during the same approach the vehicle's
-//              wheelbase passed over the frog's X. Two-stage so an *entry* hop
-//              (lands in the gap before the body arrives) qualifies — not just
-//              an *exit* hop (body already overhead when the player jumps out).
+//   THREADED — at the MOMENT of a hop, the frog's row-span crossed one of the
+//              vehicle's wheel-row Z lines AND the vehicle's wheelbase X was
+//              over the frog. Span covers single-step hops (start or end on a
+//              wheel-row) AND long-jumps (endpoints on opposite sides of a
+//              wheel-row, skipping over it). The X gate is strict — the wheels
+//              must straddle the frog at hop time, which is the "between the
+//              front and rear wheels" requirement.
 //   UNDER    — vehicle body footprint over the frog AND frog Z strictly between
 //              the wheel-row lines. Passive: small bonus for the body driving
 //              over you while you're in the safe Z gap.
@@ -48,10 +48,9 @@ export function checkCollision(frog, vehicles) {
 //
 // Each frame we compute approachingSign = (v.x - frog.x) * -v.direction.
 //   > 0: approaching   <= 0: at/past
-// We track each vehicle's max base tier during the approach plus a two-stage
-// threaded flag (`threadedHopArmed` → `threadedHop`), and fire one event per
-// approach when the sign transitions positive → non-positive. THREADED
-// supersedes any base tier when set.
+// We track each vehicle's max base tier during the approach plus a separate
+// `threadedHop` flag, and fire one event per approach when the sign transitions
+// positive → non-positive. THREADED supersedes any base tier when set.
 
 const TIER_RANK = { GRAZED: 1, UNDER: 2 };
 
@@ -114,7 +113,6 @@ function evaluateTier(frog, v, onSafeGround) {
 export function detectNearMisses(frog, vehicles) {
   if (frog.state === 'DEAD') return null;
   const fx = frog.group.position.x;
-  const fz = frog.group.position.z;
   const onSafeGround = isOnSafeGround(frog);
   let fired = null;
 
@@ -130,35 +128,25 @@ export function detectNearMisses(frog, vehicles) {
       if (cur && tierRank(cur) > tierRank(v.nearMiss.tier)) {
         v.nearMiss.tier = cur;
       }
-      // THREADED arming: while approaching, if the frog's hop spans one of
-      // THIS vehicle's wheel-row Z lines, latch `threadedHopArmed`. Spanning
-      // covers the single-step case (start or end row equals a wheelRow) AND
-      // the long-jump case (endpoints on opposite sides of a wheelRow). No
-      // X-overlap gate at this stage — entry hops naturally happen before the
-      // wheelbase reaches the frog, so requiring overlap NOW would miss them.
-      if (frog.state === 'HOPPING' && !v.nearMiss.threadedHopArmed) {
-        const lo = Math.min(frog.prevRow, frog.row);
-        const hi = Math.max(frog.prevRow, frog.row);
-        for (const wr of v.wheelRows) {
-          if (lo <= wr && wr <= hi) {
-            v.nearMiss.threadedHopArmed = true;
-            break;
-          }
-        }
-      }
-      // Promote arm → fire when the wheelbase is over the frog's X AND the
-      // frog is still under the body span in Z. The Z gate stops a "bailed"
-      // arming (player armed by hopping across a wheelRow, then hopped out of
-      // the lane entirely before the body arrived) from paying out THREADED.
-      if (v.nearMiss.threadedHopArmed && !v.nearMiss.threadedHop) {
+      // THREADED detection: at hop-time, frog's row span crosses one of THIS
+      // vehicle's wheel-row Z lines AND the wheelbase X is over the frog X.
+      // Spanning covers both single-step hops (start or end on a wheel-row)
+      // and long-jumps (endpoints on opposite sides, skipping the wheel-row).
+      // The X gate is strict so a hop in the gap when the vehicle is far
+      // away doesn't pay out — the wheels must currently be straddling the
+      // frog. Both gates are checked at hop-time only; sit-still and
+      // sideways-in-gap hops never satisfy the row-span requirement.
+      if (frog.state === 'HOPPING') {
         const wheelbaseHalfL = v.wheelbaseHalfL;
-        const bodyHalfW = v.width / 2;
-        if (
-          wheelbaseHalfL > 0 &&
-          Math.abs(v.x - fx) < wheelbaseHalfL &&
-          Math.abs(v.z - fz) < bodyHalfW
-        ) {
-          v.nearMiss.threadedHop = true;
+        if (wheelbaseHalfL > 0 && Math.abs(v.x - fx) < wheelbaseHalfL) {
+          const lo = Math.min(frog.prevRow, frog.row);
+          const hi = Math.max(frog.prevRow, frog.row);
+          for (const wr of v.wheelRows) {
+            if (lo <= wr && wr <= hi) {
+              v.nearMiss.threadedHop = true;
+              break;
+            }
+          }
         }
       }
     }
@@ -176,7 +164,6 @@ export function detectNearMisses(frog, vehicles) {
       }
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
-      v.nearMiss.threadedHopArmed = false;
     }
 
     v.nearMiss.lastSign = sign;

@@ -79,22 +79,16 @@ export class Vehicle {
     this._scene = scene;
 
     // Near-miss substate (read/written by collision.detectNearMisses).
-    //   tier:               highest base tier seen during current approach
-    //                       (UNDER | GRAZED | null)
-    //   lastSign:           previous frame's approachingSign — used to detect
-    //                       approach→pass transition and fire one event per pass.
-    //   threadedHopArmed:   the frog made a hop spanning one of this vehicle's
-    //                       wheel-row Z lines during the current approach.
-    //                       Set without an X-overlap gate so entry hops count.
-    //   threadedHop:        armed AND the wheelbase later overlapped the frog
-    //                       in X. Fires THREADED instead of the base tier.
-    // All four reset on the firing frame so the next approach starts fresh.
-    this.nearMiss = {
-      tier: null,
-      lastSign: 0,
-      threadedHopArmed: false,
-      threadedHop: false,
-    };
+    //   tier:         highest base tier seen during current approach
+    //                 (UNDER | GRAZED | null)
+    //   lastSign:     previous frame's approachingSign — used to detect
+    //                 approach→pass transition and fire one event per pass.
+    //   threadedHop:  the frog HOPPED such that its row-span crossed one of
+    //                 this vehicle's wheel-row Z lines while the wheelbase X
+    //                 was over the frog. Fires THREADED instead of the base
+    //                 tier, regardless of UNDER.
+    // All three reset on the firing frame so the next approach starts fresh.
+    this.nearMiss = { tier: null, lastSign: 0, threadedHop: false };
   }
 
   update(dt) {

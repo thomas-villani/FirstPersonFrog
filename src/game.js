@@ -61,6 +61,7 @@ export class Game {
 
     this.audio = new AudioManager();
     this.hud = new Hud();
+    this.hud.renderMuted(this.audio.muted);
     this.input = new Input(this.camera, this);
 
     this.score = new Score();
@@ -336,7 +337,6 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
-      v.nearMiss.threadedHopArmed = false;
       v.nearMiss.lastSign = 0;
     }
     this.recombCutscene = new RecombCutscene(this.scene, this.camera, this.frog);
@@ -374,7 +374,6 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
-      v.nearMiss.threadedHopArmed = false;
       v.nearMiss.lastSign = 0;
     }
     this.deathCutscene = new DeathCutscene(this.scene, this.camera, this.frog, vehicle);

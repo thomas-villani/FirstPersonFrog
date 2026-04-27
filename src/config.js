@@ -305,6 +305,7 @@ export const UNTOUCHABLE_BONUS_BASE = 1000;
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
 
 export const HIGH_SCORE_KEY = 'frogger.highscore';
+export const MUTE_KEY = 'frogger.muted';
 
 // --- XP / Frog level ---
 // Cumulative XP to BE at level N: XP_PER_LEVEL_BASE * N * (N-1) / 2.

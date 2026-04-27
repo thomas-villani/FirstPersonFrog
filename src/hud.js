@@ -23,6 +23,7 @@ export class Hud {
     this.focusFillEl = document.getElementById('focus-bar-fill');
     this.recombRowEl = document.getElementById('recomb-row');
     this.recombChargesEl = document.getElementById('recomb-charges');
+    this.muteBadgeEl = document.getElementById('mute-badge');
 
     this.overlay = document.getElementById('overlay');
     this.overlayLabel = this.overlay.querySelector('div');
@@ -102,6 +103,12 @@ export class Hud {
     this.focusRowEl.style.display = 'block';
     const pct = Math.max(0, Math.min(100, Math.round(fill * 100)));
     this.focusFillEl.style.width = `${pct}%`;
+  }
+
+  // Bottom-left mute indicator — hidden when audio is on, shown when muted.
+  renderMuted(muted) {
+    if (!this.muteBadgeEl) return;
+    this.muteBadgeEl.style.display = muted ? 'block' : 'none';
   }
 
   // Row of beetle icons matching held Recombobulation charges. Hidden while

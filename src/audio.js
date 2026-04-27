@@ -3,9 +3,11 @@ import {
   MAX_AUDIBLE_DISTANCE,
   ENGINE_POOL_SIZE,
   FOCUS_ENGINE_LOWPASS_HZ,
+  MUTE_KEY,
 } from './config.js';
 
 const ENGINE_LOWPASS_DEFAULT = 800;
+const MASTER_GAIN_VALUE = 0.8;
 
 // Web Audio API wrapper. Procedural SFX (no WAV assets) so there's no asset pipeline.
 // AudioContext must be created inside a user-gesture handler — see resume().
@@ -23,6 +25,7 @@ export class AudioManager {
     this.ctx = null;
     this.masterGain = null;
     this.liveEngineCount = 0;
+    this.muted = loadMuted();
   }
 
   // Call from a user gesture (the start-overlay click).
@@ -30,10 +33,22 @@ export class AudioManager {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 0.8;
+      this.masterGain.gain.value = this.muted ? 0 : MASTER_GAIN_VALUE;
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') await this.ctx.resume();
+  }
+
+  // Toggle mute and return the new muted state. Persists to localStorage so the
+  // preference survives reloads (the "incognito play" use case). Safe to call
+  // before the AudioContext exists — the persisted flag is honored on resume().
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.muted ? 0 : MASTER_GAIN_VALUE;
+    }
+    saveMuted(this.muted);
+    return this.muted;
   }
 
   // Pause everything (engine loops, in-flight one-shots) when the game is paused.
@@ -434,5 +449,21 @@ export class AudioManager {
     lfo.start(upStart);
     up.stop(upStart + upDur + 0.05);
     lfo.stop(upStart + upDur + 0.05);
+  }
+}
+
+function loadMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveMuted(value) {
+  try {
+    localStorage.setItem(MUTE_KEY, value ? '1' : '0');
+  } catch {
+    // localStorage unavailable — fail silently, mute still works for this session.
   }
 }

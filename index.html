@@ -293,6 +293,19 @@
         opacity: 0.65;
         min-height: 1em;
       }
+      /* Mute badge — bottom-left corner, only visible when muted. */
+      #mute-badge {
+        position: fixed;
+        bottom: 0.8rem;
+        left: 1rem;
+        font-size: 0.8rem;
+        letter-spacing: 0.15em;
+        color: #ff9b9b;
+        text-shadow: 0 0 4px #000;
+        pointer-events: none;
+        z-index: 6;
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -318,12 +331,13 @@
       <div class="row-nearmiss">NEAR-MISSES: <span id="near-miss-count">0</span></div>
     </div>
     <div id="level">LEVEL 1</div>
+    <div id="mute-badge">🔇 MUTED · M</div>
     <div id="toast"></div>
     <div id="milestone-toast"></div>
     <div id="level-up-toast"></div>
     <div id="overlay">
       <div>CLICK TO PLAY</div>
-      <small>WASD / arrow keys to hop · mouse to look · ESC to pause</small>
+      <small>WASD / arrow keys to hop · mouse to look · ESC to pause · M to mute</small>
       <div id="debug-menu">
         <div class="dm-title">DEBUG · TESTING ONLY</div>
         <div class="dm-row">
