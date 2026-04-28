@@ -43,7 +43,8 @@ Game.update(dt)
     score.addNearMiss(...) per event
     if frog.row === goalRow:
       score.bankCrossing(level)          # bank pending, accrue XP
-      drainLevelUps() → skills.update + queue toasts
+      drainLevelUps() → toasts; if any ≤ SKILL_POINT_CAP_LEVEL:
+        state = SKILLPICK; show picker; defer until 1-4 spent
       _buildLevel(level + 1)             # rebuild scene; camera survives
 
   hud.renderScore / renderCombo / renderFrogLevel
@@ -74,7 +75,7 @@ Canonical reference is in [`CLAUDE.md`](./CLAUDE.md). Quick recap:
 
 - **`frog.js`** — `IDLE | HOPPING | DEAD` state machine. Hop is `HOP_HEIGHT * sin(π·t)` arc + eased XZ lerp over `HOP_DURATION`. Hard-commit input: `tryHop` rejects mid-hop. The camera is parented to the frog group, so the arc moves the eye automatically. Head-bob is a damped impulse on landing — not during the arc itself.
 - **`input.js`** — keyboard, pointer-lock, mouse-look. WASD direction is derived from `_facingAxes()`: yaw is snapped to the nearest 90° quadrant, with `FACING_Z_BIAS = 0.18` widening the −Z and +Z zones to ~53° on each side so a partial head-turn doesn't flip forward intent into strafing.
-- **`tongue.js`** — first-person tongue projectile. Reads `skills.tier('tongueFlick')` for range from `TONGUE_TIER_RANGES`; capsule hit-test against `BugManager.tryCollectInCapsule`. Renders with `depthTest=false` and `renderOrder=999` so it draws over everything (HUD-like). Animation phases inside `TONGUE_FLICK_DURATION`: extend (0–0.35), hold (0.35–0.65), retract (0.65–1.0). `TONGUE_COOLDOWN` between flicks.
+- **`tongue.js`** — first-person tongue projectile. Range = `skills.tongueRange() * CELL_WIDTH`; capsule hit-test against `BugManager.tryCollectInCapsule`. Renders with `depthTest=false` and `renderOrder=999` so it draws over everything (HUD-like). Animation phases inside `TONGUE_FLICK_DURATION`: extend (0–0.35), hold (0.35–0.65), retract (0.65–1.0). `TONGUE_COOLDOWN` between flicks.
 
 ### World
 
@@ -89,7 +90,7 @@ Canonical reference is in [`CLAUDE.md`](./CLAUDE.md). Quick recap:
 
 - **`bugs.js`** — `BugManager.placeBugsForLevel(level, scene)` scatters `BUGS_PER_LEVEL` beetles across the level with `BUG_RISK_WEIGHT` favoring wheel-path placement (dangerous). Each bug is a Group of meshes (body + head + eyes + legs + antennae) that spins slowly so it's visible from a 5cm POV. `tryCollectAt(row, cellX)` is the mercy auto-collect on landing; `tryCollectInCapsule(origin, dir, length, radius)` is the tongue's hit-test.
 - **`score.js`** — lives, two score buckets (`pending` per-level, `banked` cumulative), combo multiplier, in-traffic survival timer, XP, frog level. `bankCrossing(level)` moves pending into banked and accrues XP; level-ups are queued for the HUD/skills to drain. `onDeath()` returns `true` on the final life. High score persists in `localStorage` under `HIGH_SCORE_KEY`.
-- **`skills.js`** — table of `frogLevel → unlocked skills`. `update(frogLevel)` recomputes the active map; `has(name)` and `tier(name)` are read by gameplay code (currently only `tongue.js`). `levelUpLabel(n)` returns the toast text for unlocks at level `n`. Game-over wipes XP and frog level back to 1.
+- **`skills.js`** — RPG branch tree: 4 branches (`tongueFu`, `hipHopping`, `frogcentration`, `hocusCroakus`) × 7 tiers each. State = `{ branchId → tier 0..7 }`; `tongueFu = 1` is pre-spent on every fresh run. `spend(branchId)` advances by one tier (forced sequential). Per-mechanic helpers (`tongueRange`, `canFrogFocus`, `recombCap`, `longJumpMult`, …) hide the branch-tier → array-lookup wiring; feature code never compares tiers to magic numbers. `BRANCH_META`/`BRANCH_ORDER` exports drive the picker UI. Game-over calls `reset()` to restore the fresh-run baseline.
 - **`hud.js`** — DOM HUD wrapping every `#`-selector in `index.html`. Score, high score, combo, lives icons, frog level + XP bar, near-miss counter, milestone toasts, level-up toasts, damage flash, overlay text. State lives in the DOM; `Hud` is a thin renderer.
 - **`death.js`** — `DeathCutscene` instance, owned by `Game` for the duration of the splat. Detaches camera from the frog group, orbits it around the impact, animates body squash + ballistic eyes + spreading blood disk + ballistic droplets. `update(dt)` returns `true` when finished. Lasts `DEATH_CUTSCENE_DURATION`.
 - **`audio.js`** — `AudioManager`. Single `AudioContext`, resumed on the overlay click (the same gesture that requests pointer lock). One-shots are layered noise + oscillators (no asset files). Engines are pooled (cap `ENGINE_POOL_SIZE = 8`) sawtooth oscillators per vehicle; `updateEngines(frog, vehicles)` ticks per-vehicle distance-based gain and approach-sign pitch shift.
@@ -109,7 +110,7 @@ Combo is capped at `COMBO_CAP = 8`, decays exponentially after `COMBO_DECAY_DELA
 
 `UNDER` is a passive flat bonus and intentionally does **not** apply or bump the combo: without that, sitting in a safe Z gap while traffic streams overhead would farm combo for free.
 
-XP equals banked points. Cumulative XP to be at level N: `XP_PER_LEVEL_BASE × N × (N-1) / 2`. So Lv 1 = 0, Lv 2 = 500, Lv 3 = 1500, Lv 4 = 3000…. Capped at `FROG_LEVEL_CAP`. Game-over wipes XP and frog level back to 1.
+XP equals banked points. Cumulative XP to be at level N: `XP_PER_LEVEL_BASE × N × (N-1) / 2` with base = 750. So Lv 1 = 0, Lv 2 = 750, Lv 3 = 2,250, Lv 4 = 4,500…. Frog level is capped at `FROG_LEVEL_CAP` (99) — the game is infinite, the level just keeps climbing for score/identity. **Skill points** stop at `SKILL_POINT_CAP_LEVEL` (28); levels 29–99 still toast but skip the picker. Game-over wipes XP, frog level, and branch tiers (Tongue Fu T1 is re-pre-spent on every new run).
 
 ## Audio architecture
 
@@ -130,17 +131,18 @@ Engine doppler is **load-bearing for fairness** — silent approaching trucks ar
 
 - `#canvas` — render target.
 - `#overlay`, `#flash` — full-screen overlays (start/pause/game-over, damage flash).
-- `#left-hud` — `LIVES` label + `#lives-icons`, `#frog-level`, `#xp-bar` containing `#xp-bar-fill`.
+- `#left-hud` — `LIVES` label + `#lives-icons`, `#frog-level`, `#xp-bar` containing `#xp-bar-fill`, `#skill-badges` (per-branch tier counters), `#recomb-row` (when unlocked).
 - `#hud` (top-right) — `#score`, `#high-score`, `#combo` (inside `#combo-row`), `#near-miss-count`.
 - `#level` — top-center "LEVEL N".
 - `#toast`, `#milestone-toast`, `#level-up-toast` — the three toast slots, animated separately so multiple events don't visually stack.
+- `#skill-picker` — modal shown during SKILLPICK state. `.sp-option` rows are keyed 1–4; greyed-out at T7. Hidden via `.hidden` class.
 
 ## Adding things
 
 The summary version (full version in `CLAUDE.md` under "How to extend"):
 
 - **New vehicle type:** add an entry to `VEHICLE_TYPES` in `config.js` and reference it from a lane's `mix`. `wheelRowSpread` must fit inside `SUB_ROWS_PER_LANE`. Add an `ENGINE_BASE_FREQ` entry in `audio.js` if a distinct engine pitch is wanted.
-- **New skill:** add an entry to the unlock table in `skills.js` and provide a `levelUpLabel`. Wire reads in the consumer (`tongue.js` is the existing example).
+- **New skill tier mechanic:** edit the relevant `_BY_TIER` array in `config.js` and update the helper in `skills.js` if a new helper is needed. Update the matching `BRANCH_META.tierLabels[]` entry so the picker reads correctly. Feature code reads through helpers (`skills.tongueRange()`, `skills.recombCap()`, etc.) rather than referencing tiers directly.
 - **New SFX:** add a `playFoo` method to `AudioManager` synthesizing via oscillators/noise — follow `playHop`, `playSquish`, `playWin` as patterns.
 - **New HUD element:** add the slot to `index.html` and a `renderFoo`/`onFoo` method to `Hud`.
 - **New lane behaviour:** lanes are built from `LANE_TEMPLATES` cycled per lane in `config.js`. Add a template entry, or change `buildLanesForLevel` for level-dependent behaviour.

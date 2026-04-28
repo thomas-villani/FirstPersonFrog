@@ -9,7 +9,7 @@ import { checkCollision, detectNearMisses } from './collision.js';
 import { Score } from './score.js';
 import { DeathCutscene } from './death.js';
 import { RecombCutscene } from './recomb.js';
-import { Skills, levelUpLabel } from './skills.js';
+import { Skills, BRANCH_META, BRANCH_ORDER } from './skills.js';
 import { BugManager } from './bugs.js';
 import { Tongue } from './tongue.js';
 import {
@@ -22,9 +22,7 @@ import {
   SPEED_RAMP_PER_LEVEL,
   SUB_ROWS_PER_LANE,
   WORLD_TIME_SCALE_FOCUS,
-  FOCUS_DURATIONS,
-  RECOMB_CHARGES_BY_TIER,
-  FROG_LEVEL_CAP,
+  SKILL_POINT_CAP_LEVEL,
   laneCountForLevel,
   goalRowForLevel,
   buildLanesForLevel,
@@ -35,6 +33,9 @@ import {
 //   'PAUSED'         — overlay shown, no updates running.
 //   'INTRO'          — first-time cinematic flythrough from top-down to frog POV.
 //   'PLAYING'        — normal gameplay.
+//   'SKILLPICK'      — between-crossings skill picker modal. World frozen; only
+//                      keyboard 1–4 input fires (via input.js). Once the queued
+//                      picks are spent, the deferred crossing transition runs.
 //   'DYING'          — 3rd-person splat cutscene after a fatal hit (lives > 0).
 //                      World is frozen for the duration; cutscene owns the camera.
 //   'RECOMBOBULATING'— splat → unsplat cutscene after a fatal hit absorbed by a
@@ -70,14 +71,16 @@ export class Game {
     this.hud.renderFrogLevel(this.score.frogLevel, this.score.xp);
 
     // Debug-menu cheat flags. Persist across deaths/runs (toggled from the
-    // pause overlay). Honored by `_applySkills` and the collision check.
+    // pause overlay). Honored by the collision check + cheatSetAllSkills.
     this.cheatInvuln = false;
     this.cheatAllSkills = false;
 
     // Skills + bug + tongue subsystems. Skills must be seeded BEFORE Tongue is
     // constructed, since Tongue captures the skills reference for tier lookups.
+    // The constructor pre-spends Tongue Fu T1 so a basic tongue works from the
+    // first hop of every fresh run.
     this.skills = new Skills();
-    this._applySkills(this.score.frogLevel);
+    this.hud.renderSkillBadges(this.skills.tiersSnapshot());
     this.bugs = new BugManager();
     this.tongue = new Tongue(
       this.camera,
@@ -87,9 +90,15 @@ export class Game {
       (bug) => this._handleBugCollect(bug),
     );
     // Spaced-out level-up toast queue — drained from update(dt) so multiple
-    // unlocks in one crossing don't visually stack.
+    // toasts in one crossing don't visually stack.
     this._levelUpToastQueue = [];
     this._levelUpToastTimer = 0;
+    // Picker queue: FIFO of frog levels still owed a spend. Populated when a
+    // crossing banks across thresholds; drained one-per-key-press in
+    // onPickSkill. While non-empty, state is SKILLPICK and the crossing
+    // transition (hud.onWin + audio.playWin + _buildLevel) is deferred.
+    this._pendingLevelUps = [];
+    this._pendingNextWorldLevel = null;
 
     this.state = 'PAUSED';
     this.hasIntroPlayed = false;
@@ -183,17 +192,23 @@ export class Game {
     // The intro flag is already true (or doesn't matter for retry — we skip it).
     if (this.state === 'GAMEOVER') {
       this.score.reset();
-      this._applySkills(this.score.frogLevel);
+      this.skills.reset();
+      this._pendingLevelUps.length = 0;
+      this._pendingNextWorldLevel = null;
       this._levelUpToastQueue.length = 0;
       this._levelUpToastTimer = 0;
       this._focusActive = false;
       if (this.fxFocusEl) this.fxFocusEl.style.opacity = '0';
       this.hud.resetForNewRun();
       this.hud.renderHighScore(this.score.highScore);
+      this.hud.renderSkillBadges(this.skills.tiersSnapshot());
       this._buildLevel(1);
       this.state = 'PLAYING';
       return;
     }
+    // Picker survives a lock loss/regain cycle — don't clobber state back to
+    // PLAYING under it, the player still owes a pick.
+    if (this.state === 'SKILLPICK') return;
     if (!this.hasIntroPlayed) this._beginIntro();
     else this.state = 'PLAYING';
   }
@@ -208,7 +223,9 @@ export class Game {
     else if (this.state === 'RECOMBOBULATING') this._finishRecombCutscene();
     // Drop focus on lock loss so the world isn't stuck in slow-mo on resume.
     if (this._focusActive) this._setFocusActive(false);
-    if (this.state !== 'GAMEOVER') {
+    // SKILLPICK and GAMEOVER own their own overlays — don't paint the pause
+    // overlay over them.
+    if (this.state !== 'GAMEOVER' && this.state !== 'SKILLPICK') {
       this.state = 'PAUSED';
       this.hud.showPause();
     }
@@ -271,9 +288,81 @@ export class Game {
       this._setFocusActive(false);
       return;
     }
-    if (this.skills.tier('frogFocus') <= 0) return;
+    if (!this.skills.canFrogFocus()) return;
     if (this.score.focusMeter <= 0) return;
     this._setFocusActive(true);
+  }
+
+  // --- Skill picker ---
+  // Enter the SKILLPICK modal for the level at the head of `_pendingLevelUps`.
+  // World freezes (state-gated in update). If every branch is already maxed
+  // (cheat-all-skills path, or 27 picks already spent), short-circuit straight
+  // to _exitSkillPick — no point showing a modal with no actionable options.
+  _enterSkillPick() {
+    if (this.skills.allMaxed()) {
+      this._pendingLevelUps.length = 0;
+      this._exitSkillPick();
+      return;
+    }
+    this.state = 'SKILLPICK';
+    if (this._focusActive) this._setFocusActive(false);
+    // Quiet the world while the player decides: ramp every live engine to 0
+    // (updateEngines doesn't run during SKILLPICK, so without this they'd
+    // hold their last frame's gain) and start a chiptune loop on the picker.
+    this.audio.silenceEngines(this.spawner.vehicles);
+    this.audio.playSkillPickMusic();
+    const frogLevel = this._pendingLevelUps[0];
+    this.hud.showSkillPicker({
+      frogLevel,
+      tiers: this.skills.tiersSnapshot(),
+      branchOrder: BRANCH_ORDER,
+      branchMeta: BRANCH_META,
+    });
+  }
+
+  // Called from input.js on Digit1-4 while in SKILLPICK. Branch-tier-already-
+  // maxed picks silently no-op so a misclick doesn't burn the player's point.
+  onPickSkill(branchId) {
+    if (this.state !== 'SKILLPICK') return;
+    if (this.skills.isMaxed(branchId)) return;
+    this.skills.spend(branchId);
+    const newTier = this.skills.tier(branchId);
+    const meta = BRANCH_META[branchId];
+    const label = meta.tierLabels[newTier] ?? `T${newTier}`;
+    this.hud.showLevelUpToast(`+1 ${meta.icon} ${meta.name} T${newTier} — ${label}`);
+    this.hud.renderSkillBadges(this.skills.tiersSnapshot());
+    this.audio.playLevelUp();
+    this._pendingLevelUps.shift();
+    if (this._pendingLevelUps.length > 0 && !this.skills.allMaxed()) {
+      // Re-render the picker for the next queued level — the previous spend
+      // may have changed which branches are available / what their next-tier
+      // labels read as.
+      const frogLevel = this._pendingLevelUps[0];
+      this.hud.showSkillPicker({
+        frogLevel,
+        tiers: this.skills.tiersSnapshot(),
+        branchOrder: BRANCH_ORDER,
+        branchMeta: BRANCH_META,
+      });
+      return;
+    }
+    this._pendingLevelUps.length = 0;
+    this._exitSkillPick();
+  }
+
+  _exitSkillPick() {
+    this.audio.stopSkillPickMusic();
+    this.hud.hideSkillPicker();
+    const targetLevel = this._pendingNextWorldLevel ?? this.level + 1;
+    this._pendingNextWorldLevel = null;
+    this.state = 'PLAYING';
+    const newLevel = this.hud.onWin();
+    this.audio.playWin();
+    // Trust hud.onWin's increment as the source-of-truth world level (it
+    // tracks +1 per crossing internally). We staged _pendingNextWorldLevel
+    // for symmetry; reconcile if the hud counter ever drifts.
+    this._buildLevel(newLevel);
+    void targetLevel; // reserved for future cross-check
   }
 
   // Centralized bug-pickup routing. Regular bugs feed score + audio + focus
@@ -296,17 +385,9 @@ export class Game {
   // build, so each crossing starts with a full set. (Earlier the grant was
   // one-shot at frog-level tier-up, but per-game-level felt better in playtest.)
   _refillRecombCharges() {
-    const tier = this.skills.tier('recombobulation');
-    const cap = RECOMB_CHARGES_BY_TIER[tier] ?? 0;
+    const cap = this.skills.recombCap();
     this.score.recombCharges = cap;
-    this.hud.renderRecombCharges(cap, tier);
-  }
-
-  // Skill table is keyed by frog level. The "all skills" debug cheat short-
-  // circuits the lookup level to FROG_LEVEL_CAP so every tier registers as
-  // unlocked, regardless of actual XP.
-  _applySkills(level) {
-    this.skills.update(this.cheatAllSkills ? FROG_LEVEL_CAP : level);
+    this.hud.renderRecombCharges(cap, cap > 0);
   }
 
   // --- Debug-menu cheats (DebugMenu wires DOM controls to these) ---
@@ -315,9 +396,15 @@ export class Game {
     this.cheatInvuln = !!on;
   }
 
+  // "ALL SKILLS UNLOCKED" — snap every branch to T7 (or back to fresh-run
+  // baseline on toggle-off). We mutate Skills directly rather than threading
+  // a "as-if max" view through every helper, because per-mechanic gating is
+  // already in the helpers themselves.
   cheatSetAllSkills(on) {
     this.cheatAllSkills = !!on;
-    this._applySkills(this.score.frogLevel);
+    if (on) this.skills.cheatMaxAll();
+    else    this.skills.cheatReset();
+    this.hud.renderSkillBadges(this.skills.tiersSnapshot());
     this._refillRecombCharges();
   }
 
@@ -346,7 +433,7 @@ export class Game {
     this.recombCutscene = new RecombCutscene(this.scene, this.camera, this.frog);
     this.audio.playRecombobulate();
     this.hud.showMilestoneToast('RECOMBOBULATED!');
-    this.hud.renderRecombCharges(this.score.recombCharges, this.skills.tier('recombobulation'));
+    this.hud.renderRecombCharges(this.score.recombCharges, this.skills.recombCap() > 0);
   }
 
   _finishRecombCutscene() {
@@ -402,6 +489,11 @@ export class Game {
 
   update(dt) {
     if (this.state === 'PAUSED' || this.state === 'GAMEOVER') return;
+    // Skill picker fully freezes the world — vehicles, spawner, audio, focus,
+    // bug drift, the whole loop. Only keyboard 1–4 (handled in input.js)
+    // mutates state; on the last spend, _exitSkillPick runs the deferred
+    // crossing transition and flips back to PLAYING.
+    if (this.state === 'SKILLPICK') return;
 
     if (this.state === 'DYING') {
       // Frog is frozen, but traffic keeps rolling past the splat — sells the
@@ -452,8 +544,7 @@ export class Game {
     // PLAYING
     // Frog + tongue + input + score combo decay run at full speed (the player's
     // edge during Frog Focus). Spawner + bugs + audio engines run at scaled dt.
-    const focusTier = this.skills.tier('frogFocus');
-    const focusUnlocked = focusTier > 0;
+    const focusUnlocked = this.skills.canFrogFocus();
     // Focus toggles on/off via toggleFocus() (F key). The only implicit
     // transition is "auto-disengage when meter empties" — re-engage requires
     // another F press after a refill, so a sliver of meter doesn't sneak focus
@@ -472,7 +563,7 @@ export class Game {
     // the world is slowed. When it hits 0, the auto-disengage check above
     // fires on the next frame.
     if (this._focusActive) {
-      const dur = FOCUS_DURATIONS[focusTier] ?? 6;
+      const dur = this.skills.focusDuration() || 6;
       this.score.drainFocusMeter(dt, dur);
     }
     this.hud.renderFocusMeter(this.score.focusMeter, focusUnlocked);
@@ -534,21 +625,27 @@ export class Game {
         const { untouchableBonus } = this.score.bankCrossing(this.level);
         // Untouchable refills the focus meter to full as part of its perk —
         // gated on the skill being unlocked (no point filling a hidden meter).
-        if (untouchableBonus > 0 && this.skills.tier('frogFocus') > 0) {
+        if (untouchableBonus > 0 && this.skills.canFrogFocus()) {
           this.score.focusMeter = 1;
         }
-        // Drain any frog-level-ups the bank just produced. Apply skill updates
-        // immediately (subsequent skills queries see the new tier) and queue
-        // toasts spaced out by _pumpLevelUpToasts so multiple unlocks don't
-        // visually stack.
+        // Drain any frog-level-ups the bank just produced. Every level-up
+        // fires a "FROG LEVEL N" toast + the level-up sting; only those
+        // at-or-below the skill cap also enqueue a picker spend.
         const levelUps = this.score.drainLevelUps();
         if (levelUps) {
           for (const newLevel of levelUps) {
-            this._applySkills(newLevel);
-            const label = levelUpLabel(newLevel) ?? `FROG LEVEL ${newLevel}`;
-            this._levelUpToastQueue.push(label);
+            this._levelUpToastQueue.push(`FROG LEVEL ${newLevel}`);
           }
           this.audio.playLevelUp();
+          const spendable = levelUps.filter((lv) => lv <= SKILL_POINT_CAP_LEVEL);
+          if (spendable.length > 0) {
+            // Defer hud.onWin / audio.playWin / _buildLevel until the picker
+            // queue empties — _exitSkillPick runs the crossing transition.
+            this._pendingLevelUps.push(...spendable);
+            this._pendingNextWorldLevel = this.level + 1;
+            this._enterSkillPick();
+            return;
+          }
         }
         const newLevel = this.hud.onWin();
         this.audio.playWin();

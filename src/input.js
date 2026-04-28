@@ -1,4 +1,4 @@
-import { PITCH_CLAMP, LONG_JUMP_TIERS } from './config.js';
+import { PITCH_CLAMP } from './config.js';
 
 // Owns keyboard, pointer lock, mouse-look, and the click-to-start overlay.
 // Hard-commit model: the frog itself rejects keypresses while mid-hop. We additionally
@@ -70,12 +70,24 @@ export class Input {
       return;
     }
 
+    // Skill picker captures 1–4 keys when active. Mute (KeyM) was handled
+    // above this gate, so it still works while the picker is up.
+    if (this.game.state === 'SKILLPICK') {
+      switch (e.code) {
+        case 'Digit1': this.game.onPickSkill('tongueFu'); break;
+        case 'Digit2': this.game.onPickSkill('hipHopping'); break;
+        case 'Digit3': this.game.onPickSkill('frogcentration'); break;
+        case 'Digit4': this.game.onPickSkill('hocusCroakus'); break;
+      }
+      return;
+    }
+
     if (this.game.state !== 'PLAYING') return;
     const frog = this.game.frog;
     const { forward, right } = this._facingAxes();
-    // Long Jump multiplier: Shift + WASD with the skill unlocked. T1 = 2× rows/cells.
-    const ljTier = this.game.skills.tier('longJump');
-    const mult = (this.shiftHeld && ljTier > 0) ? LONG_JUMP_TIERS[ljTier] : 1;
+    // Long Jump multiplier: Shift + WASD with Hip Hopping T3+ unlocked.
+    const skills = this.game.skills;
+    const mult = (this.shiftHeld && skills.canLongJump()) ? skills.longJumpMult() : 1;
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':

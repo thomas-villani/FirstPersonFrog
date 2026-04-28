@@ -24,6 +24,12 @@ export class Hud {
     this.recombRowEl = document.getElementById('recomb-row');
     this.recombChargesEl = document.getElementById('recomb-charges');
     this.muteBadgeEl = document.getElementById('mute-badge');
+    this.skillBadgesEl = document.getElementById('skill-badges');
+    this.skillPickerEl = document.getElementById('skill-picker');
+    this.skillPickerLevelEl = document.getElementById('sp-level');
+    this.skillPickerOptionEls = this.skillPickerEl
+      ? Array.from(this.skillPickerEl.querySelectorAll('.sp-option'))
+      : [];
 
     this.overlay = document.getElementById('overlay');
     this.overlayLabel = this.overlay.querySelector('div');
@@ -43,7 +49,9 @@ export class Hud {
     this.renderCombo(1);
     this.renderFrogLevel(1, 0);
     this.renderFocusMeter(0, false);
-    this.renderRecombCharges(0, 0);
+    this.renderRecombCharges(0, false);
+    this.renderSkillBadges({ tongueFu: 1, hipHopping: 0, frogcentration: 0, hocusCroakus: 0 });
+    this.hideSkillPicker();
     this._renderNearMisses();
   }
 
@@ -112,16 +120,67 @@ export class Hud {
   }
 
   // Row of beetle icons matching held Recombobulation charges. Hidden while
-  // Recomb is locked (tier === 0). Tier param lets us still show "0" when
-  // unlocked-but-empty so the player remembers they earned it.
-  renderRecombCharges(charges, tier) {
+  // Hocus Croakus is unspent. The `unlocked` flag lets us still show "0"
+  // (empty row) when unlocked-but-empty so the player remembers they earned it.
+  renderRecombCharges(charges, unlocked) {
     if (!this.recombRowEl || !this.recombChargesEl) return;
-    if (tier <= 0) {
+    if (!unlocked) {
       this.recombRowEl.style.display = 'none';
       return;
     }
     this.recombRowEl.style.display = 'block';
     this.recombChargesEl.textContent = '🪲'.repeat(Math.max(0, charges));
+  }
+
+  // Branch-tier badges row under the XP bar. Always visible during a run.
+  renderSkillBadges(tiers) {
+    if (!this.skillBadgesEl) return;
+    const t = tiers ?? {};
+    this.skillBadgesEl.textContent =
+      `🥋 ${t.tongueFu ?? 0}  🐰 ${t.hipHopping ?? 0}  🧘 ${t.frogcentration ?? 0}  🎩 ${t.hocusCroakus ?? 0}`;
+  }
+
+  // Show the skill picker modal for the next queued frog level. `branchOrder`
+  // is the array of branch IDs in display order (1..4 keys). `branchMeta` is
+  // keyed by branch ID with { icon, name, tierLabels[] }. `tiers` is the
+  // current snapshot — we render T(current) → T(current+1), or "MAXED" when
+  // the branch is at T7.
+  showSkillPicker({ frogLevel, tiers, branchOrder, branchMeta }) {
+    if (!this.skillPickerEl) return;
+    if (this.skillPickerLevelEl) this.skillPickerLevelEl.textContent = String(frogLevel);
+    for (let i = 0; i < this.skillPickerOptionEls.length; i++) {
+      const optEl = this.skillPickerOptionEls[i];
+      const branchId = branchOrder[i];
+      if (!branchId) {
+        optEl.style.display = 'none';
+        continue;
+      }
+      optEl.style.display = '';
+      const meta = branchMeta[branchId];
+      const cur = tiers[branchId] ?? 0;
+      const next = cur + 1;
+      const iconEl = optEl.querySelector('.sp-icon');
+      const nameEl = optEl.querySelector('.sp-name');
+      const tierEl = optEl.querySelector('.sp-tier');
+      const descEl = optEl.querySelector('.sp-desc');
+      if (iconEl) iconEl.textContent = meta.icon;
+      if (nameEl) nameEl.textContent = meta.name;
+      if (cur >= 7) {
+        optEl.classList.add('maxed');
+        if (tierEl) tierEl.textContent = 'MAXED';
+        if (descEl) descEl.textContent = meta.tierLabels[7] ?? '';
+      } else {
+        optEl.classList.remove('maxed');
+        if (tierEl) tierEl.textContent = `T${cur} → T${next}`;
+        if (descEl) descEl.textContent = meta.tierLabels[next] ?? '';
+      }
+    }
+    this.skillPickerEl.classList.remove('hidden');
+  }
+
+  hideSkillPicker() {
+    if (!this.skillPickerEl) return;
+    this.skillPickerEl.classList.add('hidden');
   }
 
   // Gold-tinted toast for skill unlocks. Same fade pattern as milestone toast,
@@ -209,7 +268,9 @@ export class Hud {
     this.renderCombo(1);
     this.renderFrogLevel(1, 0);
     this.renderFocusMeter(0, false);
-    this.renderRecombCharges(0, 0);
+    this.renderRecombCharges(0, false);
+    this.renderSkillBadges({ tongueFu: 1, hipHopping: 0, frogcentration: 0, hocusCroakus: 0 });
+    this.hideSkillPicker();
     if (this.milestoneEl) this.milestoneEl.style.opacity = '0';
     if (this.toastEl) this.toastEl.style.opacity = '0';
     if (this.levelUpEl) this.levelUpEl.style.opacity = '0';

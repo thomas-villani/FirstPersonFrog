@@ -319,10 +319,18 @@ export const MUTE_KEY = 'frogger.muted';
 
 // --- XP / Frog level ---
 // Cumulative XP to BE at level N: XP_PER_LEVEL_BASE * N * (N-1) / 2.
-// So Lv 1 = 0 XP (fresh-run baseline, no skills), Lv 2 = 500, Lv 3 = 1500, Lv 4 = 3000, ...
+// So Lv 1 = 0 XP, Lv 2 = 750, Lv 3 = 2250, Lv 4 = 4500, ...
 // Banked points double as XP. Game-over wipes XP and frog level.
-export const XP_PER_LEVEL_BASE = 500;
-export const FROG_LEVEL_CAP = 17;
+//
+// Two distinct caps: frog level keeps climbing for score/identity all the way
+// to FROG_LEVEL_CAP (the game is infinite), but skill points stop accruing
+// after SKILL_POINT_CAP_LEVEL — by which point a player who picked optimally
+// has 27 spent + 1 free Tongue Fu T1 = all four 7-tier branches at T7.
+// Frog levels above SKILL_POINT_CAP_LEVEL still tick up + fire a "FROG LEVEL N"
+// toast, but no skill picker.
+export const XP_PER_LEVEL_BASE = 750;
+export const FROG_LEVEL_CAP = 99;
+export const SKILL_POINT_CAP_LEVEL = 28;
 
 // --- Bugs ---
 // Placed at level start in `bugs.placeBugsForLevel`. BUG_RISK_WEIGHT = chance a
@@ -336,28 +344,47 @@ export function bugCountForLevel(level) {
   return BUGS_PER_LEVEL_BASE + laneCountForLevel(level);
 }
 
-// --- Tongue flick ---
-// Range = TONGUE_TIER_RANGES[tier] * CELL_WIDTH. Index 0 = locked (no skill).
-// Tier scaling is wired now even though only T1 unlocks at Lv 2 — T2 (Lv 6),
-// T3 (Lv 12) tier-up via the same path.
-export const TONGUE_TIER_RANGES = [0, 1, 2, 3];
+// --- Skill branches: tier-indexed mechanic arrays ---
+// Each branch has 7 tiers. Arrays are length 8 so [tier] indexes directly,
+// with index 0 = unspent baseline. PLAN_SCORING.md §11 is the source of truth.
+
+// 🥋 Tongue Fu: tongue + bug magnet + ribbit roar.
+// T1 is pre-spent on every fresh run, so a baseline tongue (1 cell) is always
+// active before the first picker spend.
+export const TONGUE_RANGE_BY_TIER         = [0, 1, 2, 3, 3, 3, 3, 3];     // cells
+export const BUG_MAGNET_RADIUS_BY_TIER    = [0, 0, 0, 3, 5, 5, 5, 5];     // m (T3+ unlocks, T4 widens)
+export const BUG_SCORE_MULT_BY_TIER       = [1, 1, 1, 1, 1.5, 1.5, 1.5, 1.5];
+export const ROAR_USES_BY_TIER            = [0, 0, 0, 0, 0, 1, 1, 2];     // E key uses per crossing
+export const ROAR_BRAKE_DURATION_BY_TIER  = [0, 0, 0, 0, 0, 1.0, 2.0, 2.0]; // s
+
+// 🐰 Hip Hopping: hop speed + long jump.
+// Speed bumps stack at T1, T2, T4, T5, T6 (T3 spends its tier on Long Jump,
+// T7 on Double Long Jump). Cumulative: 0.95^N gets faster each step.
+export const HOP_DURATION_MULT_BY_TIER    = [1.0, 0.95, 0.9025, 0.9025, 0.857, 0.815, 0.774, 0.774];
+export const LONG_JUMP_MULT_BY_TIER       = [1, 1, 1, 2, 2, 2, 2, 4];
+
+// 🧘 Frogcentration: frog focus + echolocation.
+export const FOCUS_DURATION_BY_TIER       = [0, 6, 8, 10, 12, 12, 12, 12]; // s at full meter
+export const FOCUS_PASSIVE_RECHARGE_BY_TIER = [0, 0, 0, 0.025, 0.05, 0.05, 0.05, 0.05]; // /s when not focused
+export const ECHO_TIER_BY_TIER            = [0, 0, 0, 0, 0, 1, 2, 3];     // 0=off, 1/2/3=L1/L2/L3
+
+// 🎩 Hocus Croakus: recombobulation + psychedelic sight + plague of frogs.
+export const RECOMB_CAP_BY_TIER           = [0, 1, 2, 3, 3, 3, 3, 3];     // charge refill cap
+export const SIGHT_TIER_BY_TIER           = [0, 0, 0, 0, 1, 2, 3, 3];     // 0=off, 1/2/3=L1/L2/L3
+
+// --- Tongue flick (visual + capsule constants) ---
 export const TONGUE_CAPSULE_RADIUS = 0.5;
 export const TONGUE_COOLDOWN = 0.32;
 export const TONGUE_FLICK_DURATION = 0.18;     // extend (0..0.35) → hold (0.35..0.65) → retract (0.65..1.0)
-// T3-only passive (declared now, used when Tongue T3 is unlocked):
-export const BUG_MAGNET_RADIUS = 3.0;
+// Bug Magnet drift speed (radius is per-tier above):
 export const BUG_MAGNET_DRIFT_SPEED = 0.5;
 
-// --- Frog Focus (Lv 3 unlock) ---
+// --- Frog Focus (FX + meter constants — duration is per-tier above) ---
 // Press-F-to-toggle time-slow. Vehicles, spawner, and engine pitch slow to
 // WORLD_TIME_SCALE_FOCUS; frog hop and input run at normal speed (the player's edge).
 // Meter fills on near-miss / bug events and drains while focus is engaged. When
 // the meter empties, focus auto-disengages and the player must press F again
 // after refilling.
-// Tier-indexed durations (max focus uptime at full meter, in seconds).
-// Bumped from the original 3/4/5 after playtest — 3 s wasn't enough uptime
-// to read a busy lane and commit, so Focus felt frustrating to deploy.
-export const FOCUS_DURATIONS = [0, 6, 8, 10];
 export const WORLD_TIME_SCALE_FOCUS = 0.35;
 export const FOCUS_NEAR_MISS_MULT = 2;       // base score multiplier on near-miss while focused
 export const FOCUS_FILL_THREADED = 0.4;
@@ -368,22 +395,20 @@ export const FOCUS_FILL_GRAZED = 0.2;
 export const FOCUS_FILL_BUG = 0.30;
 export const FOCUS_ENGINE_LOWPASS_HZ = 350;  // engine voices LP cutoff while focused (default 800)
 
-// --- Recombobulation (Lv 4 unlock) ---
+// --- Recombobulation (cutscene timings — cap is per-tier above) ---
 // Charges absorb a fatal hit instead of consuming a life. Splat → unsplat cutscene
 // plays; frog resumes at the same row+cellX it died on. Charges refill to the
 // tier cap at the start of every game level — unused charges don't carry over.
-export const RECOMB_CHARGES_BY_TIER = [0, 1, 2, 3];   // refill cap by tier (0 = locked)
 export const RECOMB_CUTSCENE_DURATION = 1.5;          // s — total cutscene length
 export const RECOMB_SQUASH_DURATION  = 0.35;          // s — splat-down phase
 export const RECOMB_HOLD_DURATION    = 0.30;          // s — flat hold
 
-// --- Long Jump (Lv 5 unlock) ---
-// Shift + WASD multiplies hop distance. Tier 0 = locked, T1 = 2×, T2 = 3×, T3 = 4×.
+// --- Long Jump (binding constants — multiplier is per-tier above) ---
+// Shift + WASD multiplies hop distance via skills.longJumpMult().
 // Same HOP_DURATION → effective velocity scales with tier; arc height scales by sqrt(tier).
 // Long hops clamp to playfield edges instead of being rejected.
 // (Was originally Ctrl + WASD — but Ctrl+W closes the browser tab and pages
 // can't preventDefault on OS-level shortcuts, so we use Shift instead.)
-export const LONG_JUMP_TIERS = [1, 2, 3, 4];
 
 // --- Audio ---
 export const APPROACH_PITCH = 0.35;          // max playbackRate bump for a closing vehicle

@@ -52,9 +52,117 @@ export class AudioManager {
   }
 
   // Pause everything (engine loops, in-flight one-shots) when the game is paused.
+  // The picker melody also gets torn down here — its setInterval-driven scheduler
+  // would otherwise queue notes against a frozen currentTime and dump them all
+  // at once on resume.
   async suspend() {
     if (!this.ctx) return;
+    this.stopSkillPickMusic();
     if (this.ctx.state === 'running') await this.ctx.suspend();
+  }
+
+  // Ramp every live engine voice's gain to 0 in ~50 ms. Used when the world
+  // freezes for the skill picker — the doppler-tracking gain wouldn't otherwise
+  // change just because we stopped calling updateEngines (it'd hold whatever
+  // gain it had on the last call). Engines re-amplify naturally once
+  // updateEngines starts firing again on the next PLAYING frame; if the level
+  // rebuilds first, the spawner detaches them anyway.
+  silenceEngines(vehicles) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const v of vehicles) {
+      if (!v._engine) continue;
+      v._engine.gainNode.gain.setTargetAtTime(0, now, 0.04);
+    }
+  }
+
+  // 2-voice square-wave retro loop for the skill picker. 8 lead notes (~1.1 s
+  // total) over a 2-note bass walk. Scheduled in 1-loop chunks via setInterval
+  // — Web Audio handles the per-note timing precisely; the JS timer just needs
+  // to fire often enough to refill the lookahead.
+  playSkillPickMusic() {
+    if (!this.ctx) return;
+    if (this._pickerMusic) return;
+    const ctx = this.ctx;
+
+    // Sub-bus so we can fade everything together on stop without affecting the
+    // master gain (mute toggle still works at the master level). The bus
+    // ceiling sits below 1.0 — square waves are loud, and the picker is
+    // a pause-from-action moment so the music shouldn't compete with the
+    // chime/win sounds that fire alongside it.
+    const bus = ctx.createGain();
+    bus.gain.setValueAtTime(0.0001, ctx.currentTime);
+    bus.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 0.08);
+    bus.connect(this.masterGain);
+
+    const noteDur = 0.20;
+    // Lead in G major-ish, hop-feeling pentatonic motif. Square wave for the
+    // 8-bit feel; small hold-then-release envelope per note for staccato bite.
+    const lead = [392.00, 493.88, 587.33, 783.99, 739.99, 587.33, 493.88, 392.00];
+    // Bass on beats 1 and 5 (G3, D3). 0 = rest.
+    const bass = [196.00, 0, 0, 0, 146.83, 0, 0, 0];
+    const loopLen = noteDur * lead.length;
+
+    const scheduleLoop = (startTime) => {
+      for (let i = 0; i < lead.length; i++) {
+        const t0 = startTime + i * noteDur;
+        this._scheduleSquare(bus, lead[i], t0, noteDur * 0.80, 0.13);
+        if (bass[i] > 0) this._scheduleSquare(bus, bass[i], t0, noteDur * 1.4, 0.09);
+      }
+    };
+
+    const start = ctx.currentTime + 0.05;
+    scheduleLoop(start);
+    this._pickerMusic = {
+      bus,
+      nextLoopAt: start + loopLen,
+      interval: null,
+    };
+    this._pickerMusic.interval = setInterval(() => {
+      const m = this._pickerMusic;
+      if (!m || !this.ctx) return;
+      const lookahead = this.ctx.currentTime + 0.3;
+      while (m.nextLoopAt < lookahead) {
+        scheduleLoop(m.nextLoopAt);
+        m.nextLoopAt += loopLen;
+      }
+    }, 200);
+  }
+
+  // Internal: one square-wave note with a quick attack + held sustain +
+  // exponential release into the picker-music bus.
+  _scheduleSquare(bus, freq, t0, dur, peak) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.01);
+    g.gain.setValueAtTime(peak, t0 + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(bus);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  stopSkillPickMusic() {
+    if (!this._pickerMusic) return;
+    const m = this._pickerMusic;
+    this._pickerMusic = null;
+    clearInterval(m.interval);
+    if (this.ctx) {
+      const now = this.ctx.currentTime;
+      m.bus.gain.cancelScheduledValues(now);
+      m.bus.gain.setValueAtTime(m.bus.gain.value, now);
+      m.bus.gain.linearRampToValueAtTime(0, now + 0.05);
+    }
+    // Disconnect the bus a bit later so the fade ramp completes audibly.
+    setTimeout(() => {
+      try { m.bus.disconnect(); } catch (_) {}
+    }, 200);
   }
 
   // Short wet "splat" on frog landing.

@@ -219,6 +219,15 @@
         background: linear-gradient(90deg, #5fffd0, #4cc8ff);
         transition: width 100ms linear;
       }
+      /* Branch-tier badges — one row of 4 emoji+number tokens. Sits between
+         the XP bar and the recomb row. Always visible during a run so the
+         player can scan their build at a glance. */
+      #skill-badges {
+        margin-top: 0.45rem;
+        font-size: 0.85rem;
+        letter-spacing: 0.18em;
+        color: #ffe7a8;
+      }
       /* Recombobulation charges — beetle icons under the XP bar. */
       #recomb-row {
         margin-top: 0.45rem;
@@ -293,6 +302,80 @@
         opacity: 0.65;
         min-height: 1em;
       }
+      /* Skill picker modal — shown when SKILLPICK state is active. Sits over
+         the locked canvas; keyboard 1-4 drives selection. Z above the pause
+         overlay so a lock-loss during the picker keeps the picker on top. */
+      #skill-picker {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        font-family: monospace;
+        z-index: 12;
+        pointer-events: none;
+      }
+      #skill-picker.hidden {
+        display: none;
+      }
+      #skill-picker .sp-title {
+        font-size: 1.1rem;
+        letter-spacing: 0.2em;
+        color: #ffd86b;
+        text-shadow: 0 0 12px #ff9a2a, 0 0 4px #000;
+        margin-bottom: 1.2rem;
+      }
+      #skill-picker .sp-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        min-width: 28rem;
+        padding: 1rem 1.4rem;
+        border: 1px solid rgba(255, 216, 107, 0.45);
+        background: rgba(20, 18, 12, 0.85);
+      }
+      #skill-picker .sp-option {
+        display: grid;
+        grid-template-columns: 2.4rem 2rem 1fr auto;
+        align-items: baseline;
+        gap: 0.6rem;
+        padding: 0.5rem 0.7rem;
+        border-left: 3px solid rgba(255, 216, 107, 0.7);
+        background: rgba(40, 32, 16, 0.6);
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+      }
+      #skill-picker .sp-option.maxed {
+        opacity: 0.4;
+        border-left-color: rgba(180, 180, 180, 0.4);
+      }
+      #skill-picker .sp-key {
+        color: #ffd86b;
+        font-weight: bold;
+      }
+      #skill-picker .sp-icon {
+        font-size: 1.3rem;
+      }
+      #skill-picker .sp-name {
+        color: #fff;
+        font-weight: bold;
+      }
+      #skill-picker .sp-tier {
+        color: #b8e0ff;
+        font-size: 0.85rem;
+        letter-spacing: 0.15em;
+      }
+      #skill-picker .sp-desc {
+        grid-column: 3 / span 2;
+        color: #cfcfcf;
+        font-size: 0.8rem;
+        opacity: 0.85;
+        letter-spacing: 0.05em;
+        margin-top: 0.2rem;
+      }
       /* Mute badge — bottom-left corner, only visible when muted. */
       #mute-badge {
         position: fixed;
@@ -313,8 +396,9 @@
     <div id="flash"></div>
     <div id="left-hud">
       <div><span class="label">LIVES</span><span id="lives-icons"></span></div>
-      <div id="frog-level">FROG Lv 1 (0 / 500)</div>
+      <div id="frog-level">FROG Lv 1 (0 / 750)</div>
       <div id="xp-bar"><div id="xp-bar-fill"></div></div>
+      <div id="skill-badges">🥋 1  🐰 0  🧘 0  🎩 0</div>
       <div id="recomb-row" style="display:none;">
         <span class="label">RECOMB</span><span id="recomb-charges"></span>
       </div>
@@ -335,6 +419,39 @@
     <div id="toast"></div>
     <div id="milestone-toast"></div>
     <div id="level-up-toast"></div>
+    <div id="skill-picker" class="hidden">
+      <div class="sp-title">🐸 FROG LEVEL <span id="sp-level">2</span> — choose a skill point</div>
+      <div class="sp-options">
+        <div class="sp-option" data-key="1">
+          <span class="sp-key">[1]</span>
+          <span class="sp-icon">🥋</span>
+          <span class="sp-name">Tongue Fu</span>
+          <span class="sp-tier">T1 → T2</span>
+          <div class="sp-desc">—</div>
+        </div>
+        <div class="sp-option" data-key="2">
+          <span class="sp-key">[2]</span>
+          <span class="sp-icon">🐰</span>
+          <span class="sp-name">Hip Hopping</span>
+          <span class="sp-tier">T0 → T1</span>
+          <div class="sp-desc">—</div>
+        </div>
+        <div class="sp-option" data-key="3">
+          <span class="sp-key">[3]</span>
+          <span class="sp-icon">🧘</span>
+          <span class="sp-name">Frogcentration</span>
+          <span class="sp-tier">T0 → T1</span>
+          <div class="sp-desc">—</div>
+        </div>
+        <div class="sp-option" data-key="4">
+          <span class="sp-key">[4]</span>
+          <span class="sp-icon">🎩</span>
+          <span class="sp-name">Hocus Croakus</span>
+          <span class="sp-tier">T0 → T1</span>
+          <div class="sp-desc">—</div>
+        </div>
+      </div>
+    </div>
     <div id="overlay">
       <div>CLICK TO PLAY</div>
       <small>WASD / arrow keys to hop · mouse to look · ESC to pause · M to mute</small>

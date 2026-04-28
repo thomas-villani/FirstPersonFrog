@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {
-  TONGUE_TIER_RANGES,
   TONGUE_CAPSULE_RADIUS,
   TONGUE_COOLDOWN,
   TONGUE_FLICK_DURATION,
@@ -90,9 +89,7 @@ export class Tongue {
 
   flick() {
     if (this._cooldown > 0) return;
-    if (!this.skills.has('tongueFlick')) return;
-    const tier = this.skills.tier('tongueFlick');
-    const range = TONGUE_TIER_RANGES[tier] * CELL_WIDTH;
+    const range = this.skills.tongueRange() * CELL_WIDTH;
     if (range <= 0) return;
 
     // World-space yaw-projected forward. Camera quaternion includes pitch; we
