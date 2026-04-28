@@ -46,6 +46,128 @@
       #overlay.hidden {
         display: none;
       }
+      /* Section visibility is data-mode driven so the overlay can swap between
+         title / pause / gameover / help without touching the debug menu. */
+      .overlay-section {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+      }
+      #overlay[data-mode="title"]    #overlay-title,
+      #overlay[data-mode="pause"]    #overlay-prompt,
+      #overlay[data-mode="gameover"] #overlay-prompt,
+      #overlay[data-mode="help"]     #overlay-help {
+        display: flex;
+      }
+      /* Help is a full take-over: hide the debug panel so it doesn't tile under
+         the help text. */
+      #overlay[data-mode="help"] #debug-menu {
+        display: none;
+      }
+      /* In help mode the dim background is inert — match the cursor to that. */
+      #overlay[data-mode="help"] {
+        cursor: default;
+      }
+      /* Title screen styling — frog-green title with a soft glow. */
+      #overlay-title .title-main {
+        font-size: 4rem;
+        letter-spacing: 0.18em;
+        color: #6dff8e;
+        text-shadow: 0 0 24px #2ecc71, 0 0 6px #000;
+        margin-bottom: 0.4rem;
+      }
+      #overlay-title .title-sub {
+        font-size: 0.95rem;
+        letter-spacing: 0.25em;
+        opacity: 0.7;
+        margin-bottom: 2.4rem;
+      }
+      .overlay-buttons {
+        display: flex;
+        gap: 1.4rem;
+      }
+      #overlay button:not(#dm-warp):not(.link-btn) {
+        font-family: monospace;
+        font-size: 1rem;
+        letter-spacing: 0.18em;
+        padding: 0.7rem 1.6rem;
+        background: rgba(40, 80, 50, 0.7);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+      }
+      #overlay button:not(#dm-warp):not(.link-btn):hover {
+        background: rgba(60, 130, 80, 0.85);
+        border-color: rgba(255, 255, 255, 0.7);
+      }
+      /* "HOW TO PLAY" link sitting under the pause hint — less prominent than
+         a full button so it doesn't compete with the implicit "click to resume". */
+      .link-btn {
+        margin-top: 1rem;
+        background: transparent;
+        color: #b8e0ff;
+        border: none;
+        font-family: monospace;
+        font-size: 0.85rem;
+        letter-spacing: 0.18em;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+        opacity: 0.85;
+      }
+      .link-btn:hover {
+        opacity: 1;
+      }
+      /* Help panel — left-aligned reading text inside a bordered box. */
+      #overlay-help {
+        max-width: 640px;
+        padding: 1.4rem 2rem;
+        background: rgba(20, 20, 20, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        text-align: left;
+        font-size: 0.9rem;
+        letter-spacing: 0.04em;
+        cursor: default;
+      }
+      #overlay-help .help-title {
+        font-size: 1.4rem;
+        letter-spacing: 0.2em;
+        color: #ffd86b;
+        text-shadow: 0 0 8px #000;
+        text-align: center;
+        margin-bottom: 1.2rem;
+      }
+      #overlay-help .help-body {
+        line-height: 1.55;
+      }
+      #overlay-help .help-body p {
+        margin: 0.6rem 0;
+      }
+      #overlay-help .help-body ul {
+        margin: 0.4rem 0 0.8rem 0;
+        padding-left: 1.4rem;
+      }
+      #overlay-help .help-body li {
+        margin: 0.25rem 0;
+      }
+      #overlay-help .help-body strong {
+        color: #ffd86b;
+      }
+      #overlay-help .help-body kbd {
+        display: inline-block;
+        padding: 0.05rem 0.4rem;
+        background: #222;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 2px;
+        font-family: monospace;
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+        margin: 0 0.1rem;
+      }
+      #btn-help-close {
+        align-self: center;
+        margin-top: 1.2rem;
+      }
       #hud {
         position: fixed;
         top: 0.75rem;
@@ -453,9 +575,39 @@
         </div>
       </div>
     </div>
-    <div id="overlay">
-      <div>CLICK TO PLAY</div>
-      <small>WASD / arrow keys to hop · mouse to look · ESC to pause · M to mute</small>
+    <div id="overlay" data-mode="title">
+      <div id="overlay-title" class="overlay-section">
+        <div class="title-main">FIRST PERSON FROG</div>
+        <div class="title-sub">a tiny terror, a giant world</div>
+        <div class="overlay-buttons">
+          <button id="btn-play" type="button">CLICK TO PLAY</button>
+          <button id="btn-help-open" type="button">HOW TO PLAY</button>
+        </div>
+      </div>
+      <div id="overlay-prompt" class="overlay-section">
+        <div id="overlay-label">CLICK TO RESUME</div>
+        <small id="overlay-small">WASD / arrow keys to hop · mouse to look · ESC to pause · M to mute</small>
+        <button id="btn-help-open-pause" type="button" class="link-btn">HOW TO PLAY</button>
+      </div>
+      <div id="overlay-help" class="overlay-section">
+        <div class="help-title">HOW TO PLAY</div>
+        <div class="help-body">
+          <p><strong>Goal —</strong> hop across every lane to the far median. Each crossing ramps the level: more lanes, faster cars.</p>
+          <p><strong>Controls</strong></p>
+          <ul>
+            <li><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows — hop forward, left, back, right (relative to where you face)</li>
+            <li><kbd>Mouse</kbd> — look around</li>
+            <li><kbd>Click</kbd> or <kbd>Space</kbd> — flick your tongue (catch bugs for XP)</li>
+            <li><kbd>F</kbd> — Frog Focus slow-mo (once unlocked)</li>
+            <li><kbd>Shift</kbd> + move — long jump (once Hip Hopping is unlocked)</li>
+            <li><kbd>1</kbd>–<kbd>4</kbd> — pick a skill when offered after a frog level-up</li>
+            <li><kbd>Esc</kbd> pause · <kbd>M</kbd> mute</li>
+          </ul>
+          <p><strong>Stay alive —</strong> wheels kill, but the gap between front and back wheels is survivable. You can hop into a truck's belly and out the other side. Once you commit to a hop you can't change your mind, so wait for openings.</p>
+          <p><strong>Score —</strong> chain near-misses (THREADED, GRAZED) to build your combo multiplier. Crossing a level untouched grants a bonus. Five lives total.</p>
+        </div>
+        <button id="btn-help-close" type="button">BACK</button>
+      </div>
       <div id="debug-menu">
         <div class="dm-title">DEBUG · TESTING ONLY</div>
         <div class="dm-row">

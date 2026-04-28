@@ -30,6 +30,8 @@ import {
 } from './config.js';
 
 // State machine:
+//   'TITLE'          — pre-first-click. Top-down camera, traffic flowing, title
+//                      overlay shown. Spawner ticks; frog/input/collision do not.
 //   'PAUSED'         — overlay shown, no updates running.
 //   'INTRO'          — first-time cinematic flythrough from top-down to frog POV.
 //   'PLAYING'        — normal gameplay.
@@ -109,7 +111,7 @@ export class Game {
     this._paradeTimer = 0;
     this._paradePendsPicker = false;
 
-    this.state = 'PAUSED';
+    this.state = 'TITLE';
     this.hasIntroPlayed = false;
     this._introElapsed = 0;
     this._introLook = new THREE.Vector3();
@@ -123,6 +125,15 @@ export class Game {
     this.fxFocusEl = document.getElementById('focus-tint');
 
     this._buildLevel(1);
+    // Set up the cinematic top-down camera + intro frog mesh now so the title
+    // screen renders into a live world. The flythrough that fires on click
+    // tweens from this same camera position, so the transition is seamless.
+    this._setupCinematicScene();
+    // Seed a couple of vehicles so level 1's single lane isn't empty while the
+    // player is reading the title — they'll be off-screen by the time the
+    // 2.6 s flythrough lands the frog at ground level.
+    this.spawner.prePopulate(2);
+    this.hud.showTitle();
 
     window.addEventListener('resize', () => this._onResize());
   }
@@ -243,10 +254,13 @@ export class Game {
     this.audio.suspend();
   }
 
-  _beginIntro() {
-    this.state = 'INTRO';
-    this._introElapsed = 0;
-
+  // Park the camera at the cinematic top-down position and add the placeholder
+  // frog mesh — used both by the title screen (sits frozen here while the
+  // player reads the title) and by _beginIntro (the flythrough tween starts
+  // from this exact pose). Idempotent: skips reparenting / re-meshing if the
+  // scene is already set up.
+  _setupCinematicScene() {
+    if (this._introFrogMesh) return;
     this.frog.group.remove(this.camera);
     this.scene.add(this.camera);
     this.camera.position.set(INTRO_START_POS[0], INTRO_START_POS[1], INTRO_START_POS[2]);
@@ -255,6 +269,14 @@ export class Game {
 
     this._introFrogMesh = buildIntroFrogMesh();
     this.frog.group.add(this._introFrogMesh);
+  }
+
+  _beginIntro() {
+    this.state = 'INTRO';
+    this._introElapsed = 0;
+    // No-op if the title screen already set this up; safety net for any future
+    // path that enters intro from a non-title state.
+    this._setupCinematicScene();
   }
 
   _finishIntro() {
@@ -500,6 +522,14 @@ export class Game {
 
   update(dt) {
     if (this.state === 'PAUSED' || this.state === 'GAMEOVER') return;
+    // TITLE: pre-first-click. Camera is parked at INTRO_START_POS looking
+    // down; we tick the spawner so traffic flows past the frog placeholder
+    // while the player reads the title. Audio engine updates are no-ops until
+    // resume() — that's fine, the title screen is intentionally silent.
+    if (this.state === 'TITLE') {
+      this.spawner.update(dt);
+      return;
+    }
     // Skill picker fully freezes the world — vehicles, spawner, audio, focus,
     // bug drift, the whole loop. Only keyboard 1–4 (handled in input.js)
     // mutates state; on the last spend, _exitSkillPick runs the deferred

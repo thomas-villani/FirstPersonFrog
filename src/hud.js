@@ -32,10 +32,13 @@ export class Hud {
       : [];
 
     this.overlay = document.getElementById('overlay');
-    this.overlayLabel = this.overlay.querySelector('div');
-    this.overlaySmall = this.overlay.querySelector('small');
-    this._defaultOverlayMain = this.overlayLabel ? this.overlayLabel.textContent : 'CLICK TO PLAY';
+    this.overlayLabel = document.getElementById('overlay-label');
+    this.overlaySmall = document.getElementById('overlay-small');
     this._defaultOverlaySmall = this.overlaySmall ? this.overlaySmall.textContent : '';
+    // Remembers which section was active before help opened, so BACK returns
+    // the player to the right place (title vs pause vs gameover).
+    this._prevOverlayMode = 'title';
+    this._wireOverlayButtons();
 
     this._milestoneTimer = null;
     this._levelUpTimer = null;
@@ -207,15 +210,26 @@ export class Hud {
     }, 1100);
   }
 
-  // --- Overlay text (pause / game over) ---
+  // --- Overlay sections (title / pause / gameover / help) ---
 
   setOverlay(main, sub) {
     if (this.overlayLabel) this.overlayLabel.textContent = main;
     if (this.overlaySmall) this.overlaySmall.textContent = sub;
   }
 
+  // Switches which section inside #overlay is visible. CSS keys off data-mode.
+  setOverlayMode(mode) {
+    if (!this.overlay) return;
+    this.overlay.dataset.mode = mode;
+  }
+
+  showTitle() {
+    this.setOverlayMode('title');
+  }
+
   showPause() {
     this.setOverlay('CLICK TO RESUME', this._defaultOverlaySmall);
+    this.setOverlayMode('pause');
   }
 
   showGameOver(finalScore, highScore) {
@@ -223,6 +237,57 @@ export class Hud {
     const headline = isNewHi ? 'GAME OVER · NEW HIGH SCORE' : 'GAME OVER';
     const sub = `FINAL: ${finalScore.toLocaleString()} · HI: ${highScore.toLocaleString()} · CLICK FOR NEW RUN`;
     this.setOverlay(headline, sub);
+    this.setOverlayMode('gameover');
+  }
+
+  // Help is a take-over panel — remembers the section we came from so BACK
+  // restores it (defaulting to title for the first-load case).
+  showHelp() {
+    if (!this.overlay) return;
+    const cur = this.overlay.dataset.mode;
+    if (cur && cur !== 'help') this._prevOverlayMode = cur;
+    this.setOverlayMode('help');
+  }
+
+  hideHelp() {
+    this.setOverlayMode(this._prevOverlayMode || 'title');
+  }
+
+  // Help open/close + the help panel itself stop click propagation so they
+  // don't bubble to the overlay's "click anywhere → request pointer lock"
+  // handler. The PLAY button intentionally does NOT stop propagation — the
+  // overlay handler is what acquires pointer lock and resumes audio.
+  _wireOverlayButtons() {
+    const openTitle = document.getElementById('btn-help-open');
+    const openPause = document.getElementById('btn-help-open-pause');
+    const close = document.getElementById('btn-help-close');
+    const help = document.getElementById('overlay-help');
+    const swallow = (e) => e.stopPropagation();
+
+    if (openTitle) {
+      openTitle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showHelp();
+      });
+    }
+    if (openPause) {
+      openPause.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showHelp();
+      });
+    }
+    if (close) {
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.hideHelp();
+      });
+    }
+    if (help) {
+      // Reading clicks (e.g. selecting text) inside the help panel must not
+      // pop pointer lock or start the game.
+      help.addEventListener('click', swallow);
+      help.addEventListener('mousedown', swallow);
+    }
   }
 
   // --- Near-miss lifetime counter ---

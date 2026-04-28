@@ -184,6 +184,11 @@ export class Input {
   }
 
   _onOverlayClick() {
+    // Don't grab pointer lock if the help panel is up — the player is reading,
+    // not trying to start the game. They have to hit BACK to leave help. (The
+    // help panel and BACK button stopPropagation, so this only catches clicks
+    // on the dim background around the help panel.)
+    if (this.overlay.dataset.mode === 'help') return;
     // User gesture: do BOTH pointer-lock request and audio context resume here.
     this.canvas.requestPointerLock();
     this.game.audio.resume();
