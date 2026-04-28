@@ -61,6 +61,15 @@ export class Input {
 
     if (e.repeat) return;
 
+    // If a text input has focus (e.g. the leaderboard name field on game-over),
+    // typing letters/numbers must not also fire game shortcuts: "M" would mute,
+    // "1"–"4" would feed into a stale skill picker, "F" would no-op but still
+    // be confusing. Skip the entire handler — the input element handles its own
+    // keys and stopPropagation prevents bubbling here in normal browser flow,
+    // but we keep this guard as belt-and-braces in case any path leaks through.
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
     // Mute is a global toggle — works in any state (paused, intro, game-over)
     // so a player can silence the page before clicking to start. Handled BEFORE
     // the PLAYING gate below.
@@ -184,11 +193,12 @@ export class Input {
   }
 
   _onOverlayClick() {
-    // Don't grab pointer lock if the help panel is up — the player is reading,
-    // not trying to start the game. They have to hit BACK to leave help. (The
-    // help panel and BACK button stopPropagation, so this only catches clicks
-    // on the dim background around the help panel.)
-    if (this.overlay.dataset.mode === 'help') return;
+    // Don't grab pointer lock if a take-over panel is up — the player is
+    // reading, not trying to start the game. They have to hit BACK to leave.
+    // (Both panels and their BACK buttons stopPropagation, so this only
+    // catches clicks on the dim background around the panel.)
+    const mode = this.overlay.dataset.mode;
+    if (mode === 'help' || mode === 'leaderboard') return;
     // User gesture: do BOTH pointer-lock request and audio context resume here.
     this.canvas.requestPointerLock();
     this.game.audio.resume();

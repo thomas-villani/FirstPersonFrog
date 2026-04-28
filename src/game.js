@@ -511,7 +511,7 @@ export class Game {
     if (this._pendingGameOver) {
       this._pendingGameOver = false;
       this.state = 'GAMEOVER';
-      this.hud.showGameOver(this.score.banked, this.score.highScore);
+      this.hud.showGameOver(this.score.banked, this.score.highScore, this.score.lastRank);
       if (document.exitPointerLock) document.exitPointerLock();
     } else {
       this.frog.resetToStart();
@@ -655,7 +655,7 @@ export class Game {
       if (this.score.consumeRecombCharge()) {
         this._beginRecombCutscene();
       } else {
-        const isGameOver = this.score.onDeath();
+        const isGameOver = this.score.onDeath(this.level);
         this.frog.die();
         this.audio.playSquish();
         this.hud.onDeath();

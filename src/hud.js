@@ -1,5 +1,5 @@
 import { STARTING_LIVES, FROG_LEVEL_CAP } from './config.js';
-import { xpForLevel } from './score.js';
+import { xpForLevel, loadScores, updateScoreName, NAME_MAX_LENGTH } from './score.js';
 
 // Tiny DOM-based HUD. Score, combo, lives, near-miss counter, level toast,
 // milestone toast, red damage flash, overlay text. No three.js HUD layer — DOM
@@ -35,8 +35,11 @@ export class Hud {
     this.overlayLabel = document.getElementById('overlay-label');
     this.overlaySmall = document.getElementById('overlay-small');
     this._defaultOverlaySmall = this.overlaySmall ? this.overlaySmall.textContent : '';
-    // Remembers which section was active before help opened, so BACK returns
-    // the player to the right place (title vs pause vs gameover).
+    this.leaderboardEntriesEl = document.getElementById('leaderboard-entries');
+    this.leaderboardTitleEl = document.getElementById('leaderboard-title');
+    this.leaderboardFinalEl = document.getElementById('leaderboard-final');
+    // Remembers which section was active before help / leaderboard opened, so
+    // BACK returns the player to the right place (title vs pause vs gameover).
     this._prevOverlayMode = 'title';
     this._wireOverlayButtons();
 
@@ -232,12 +235,136 @@ export class Hud {
     this.setOverlayMode('pause');
   }
 
-  showGameOver(finalScore, highScore) {
-    const isNewHi = finalScore > 0 && finalScore >= highScore;
+  // `rank` is the 1-indexed leaderboard position the just-finished run earned,
+  // or null if it didn't make the top 10. The matching list entry is highlighted.
+  showGameOver(finalScore, highScore, rank) {
+    const isNewHi = finalScore > 0 && finalScore >= highScore && rank === 1;
     const headline = isNewHi ? 'GAME OVER · NEW HIGH SCORE' : 'GAME OVER';
-    const sub = `FINAL: ${finalScore.toLocaleString()} · HI: ${highScore.toLocaleString()} · CLICK FOR NEW RUN`;
-    this.setOverlay(headline, sub);
+    if (this.leaderboardTitleEl) {
+      this.leaderboardTitleEl.textContent = headline;
+      this.leaderboardTitleEl.classList.add('gameover');
+    }
+    if (this.leaderboardFinalEl) {
+      const newHiBadge = isNewHi ? `<span class="new-hi">NEW HIGH SCORE</span>` : '';
+      const rankText = rank ? ` · RANK #${rank}` : '';
+      this.leaderboardFinalEl.innerHTML =
+        `FINAL: ${finalScore.toLocaleString()}${rankText}${newHiBadge}`;
+    }
+    // Editable iff the run made the cut — no point showing an input field for
+    // a non-qualifying score (the entry isn't even in the list).
+    this.renderLeaderboard(rank, /*editable=*/ rank != null);
+    // Update the gameover hint to mention name entry only when an input is shown.
+    const hintEl = document.querySelector('#overlay-leaderboard .lb-gameover-hint');
+    if (hintEl) {
+      hintEl.textContent = rank != null
+        ? 'TYPE YOUR NAME · CLICK ANYWHERE FOR NEW RUN'
+        : 'CLICK ANYWHERE FOR NEW RUN';
+    }
     this.setOverlayMode('gameover');
+  }
+
+  // Title-screen leaderboard view. Same panel, different framing — BACK button
+  // visible, no final-score row, click-on-overlay is inert (input.js gates it).
+  showLeaderboard() {
+    if (!this.overlay) return;
+    const cur = this.overlay.dataset.mode;
+    if (cur && cur !== 'leaderboard') this._prevOverlayMode = cur;
+    if (this.leaderboardTitleEl) {
+      this.leaderboardTitleEl.textContent = 'LEADERBOARD';
+      this.leaderboardTitleEl.classList.remove('gameover');
+    }
+    this.renderLeaderboard(null);
+    this.setOverlayMode('leaderboard');
+  }
+
+  hideLeaderboard() {
+    this.setOverlayMode(this._prevOverlayMode || 'title');
+  }
+
+  // Populates the <ol> with the persisted top-N. `highlightRank` (1-indexed)
+  // marks the just-earned entry so the player can find their score in the list.
+  // When `editable` is true, the highlighted row swaps its name span for a
+  // text input — used on game-over so the player can rename their entry. The
+  // input commits on Enter or blur (see _wireNameInput).
+  renderLeaderboard(highlightRank, editable = false) {
+    if (!this.leaderboardEntriesEl) return;
+    const scores = loadScores();
+    this.leaderboardEntriesEl.innerHTML = '';
+    if (scores.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'lb-empty';
+      empty.textContent = 'NO SCORES YET — BE THE FIRST FROG';
+      this.leaderboardEntriesEl.appendChild(empty);
+      return;
+    }
+    for (let i = 0; i < scores.length; i++) {
+      const e = scores[i];
+      const li = document.createElement('li');
+      const isHighlighted = highlightRank && i + 1 === highlightRank;
+      if (isHighlighted) li.className = 'highlight';
+      const rankSpan = `<span class="lb-rank">${i + 1}.</span>`;
+      const scoreSpan = `<span class="lb-score">${e.score.toLocaleString()}</span>`;
+      const levelSpan = `<span class="lb-level">Lv ${e.level}</span>`;
+      const dateSpan = `<span class="lb-date">${escapeHtml(e.date || '')}</span>`;
+      const name = e.name || 'FROG';
+      if (isHighlighted && editable) {
+        // Build the row via DOM nodes so we can attach an input element with
+        // event listeners directly. innerHTML wouldn't let us bind handlers.
+        li.innerHTML = rankSpan;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'lb-name-input';
+        input.maxLength = NAME_MAX_LENGTH;
+        input.value = name;
+        input.spellcheck = false;
+        input.autocapitalize = 'characters';
+        input.setAttribute('aria-label', 'enter your name');
+        li.appendChild(input);
+        li.insertAdjacentHTML('beforeend', scoreSpan + levelSpan + dateSpan);
+        this._wireNameInput(input, highlightRank);
+      } else {
+        li.innerHTML =
+          rankSpan +
+          `<span class="lb-name">${escapeHtml(name)}</span>` +
+          scoreSpan +
+          levelSpan +
+          dateSpan;
+      }
+      this.leaderboardEntriesEl.appendChild(li);
+    }
+  }
+
+  // Bind keydown/blur handlers on the inline-edit input. Enter commits and
+  // blurs; blur commits + freezes the value into a span (so the row matches
+  // every other entry afterward). Both stop click/key propagation so typing
+  // a key bound elsewhere (mute "M", restart click) doesn't leak through.
+  _wireNameInput(input, rank) {
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      }
+    });
+    input.addEventListener('blur', () => {
+      const cleaned = updateScoreName(rank, input.value);
+      if (cleaned == null) return;
+      // Replace the input with a span so the row reads like the rest of the
+      // list (and a stray click can't refocus the field after commit).
+      const span = document.createElement('span');
+      span.className = 'lb-name';
+      span.textContent = cleaned;
+      input.replaceWith(span);
+    });
+    // Defer focus until the panel is actually shown — calling focus()
+    // synchronously inside renderLeaderboard sometimes loses the focus to the
+    // overlay re-layout. requestAnimationFrame is enough to settle.
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
   }
 
   // Help is a take-over panel — remembers the section we came from so BACK
@@ -262,6 +389,9 @@ export class Hud {
     const openPause = document.getElementById('btn-help-open-pause');
     const close = document.getElementById('btn-help-close');
     const help = document.getElementById('overlay-help');
+    const lbOpen = document.getElementById('btn-leaderboard-open');
+    const lbClose = document.getElementById('btn-leaderboard-close');
+    const lbPanel = document.getElementById('overlay-leaderboard');
     const swallow = (e) => e.stopPropagation();
 
     if (openTitle) {
@@ -287,6 +417,33 @@ export class Hud {
       // pop pointer lock or start the game.
       help.addEventListener('click', swallow);
       help.addEventListener('mousedown', swallow);
+    }
+    if (lbOpen) {
+      lbOpen.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showLeaderboard();
+      });
+    }
+    if (lbClose) {
+      lbClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.hideLeaderboard();
+      });
+    }
+    if (lbPanel) {
+      // Title-view: panel clicks must not start the game (the dim background
+      // is gated on data-mode). Game-over view: clicks SHOULD propagate so
+      // anywhere-on-overlay starts a new run — handled inline below.
+      lbPanel.addEventListener('click', (e) => {
+        if (this.overlay && this.overlay.dataset.mode === 'leaderboard') {
+          e.stopPropagation();
+        }
+      });
+      lbPanel.addEventListener('mousedown', (e) => {
+        if (this.overlay && this.overlay.dataset.mode === 'leaderboard') {
+          e.stopPropagation();
+        }
+      });
     }
   }
 
@@ -351,4 +508,16 @@ export class Hud {
   _renderLevel() {
     if (this.levelEl) this.levelEl.textContent = `LEVEL ${this.level}`;
   }
+}
+
+// Escape user-supplied strings before piping into innerHTML. Player names come
+// from a free-text input, and dates come from new Date().toISOString() so are
+// already safe — but escaping both keeps the rendering path uniformly safe.
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

@@ -53,19 +53,34 @@
         flex-direction: column;
         align-items: center;
       }
-      #overlay[data-mode="title"]    #overlay-title,
-      #overlay[data-mode="pause"]    #overlay-prompt,
-      #overlay[data-mode="gameover"] #overlay-prompt,
-      #overlay[data-mode="help"]     #overlay-help {
+      #overlay[data-mode="title"]       #overlay-title,
+      #overlay[data-mode="pause"]       #overlay-prompt,
+      #overlay[data-mode="gameover"]    #overlay-leaderboard,
+      #overlay[data-mode="leaderboard"] #overlay-leaderboard,
+      #overlay[data-mode="help"]        #overlay-help {
         display: flex;
       }
-      /* Help is a full take-over: hide the debug panel so it doesn't tile under
-         the help text. */
-      #overlay[data-mode="help"] #debug-menu {
+      /* Leaderboard panel reused for both title-view and game-over. CSS varies
+         which footer + intro elements are visible:
+         - "leaderboard" mode → BACK button visible, no final-score line, no
+           gameover hint, panel doesn't accept overlay click-through.
+         - "gameover" mode   → final-score line + click-to-restart hint visible,
+           BACK button hidden. Click anywhere starts a new run. */
+      #overlay[data-mode="leaderboard"] .lb-gameover-hint,
+      #overlay[data-mode="leaderboard"] .lb-final,
+      #overlay[data-mode="gameover"]    #btn-leaderboard-close {
         display: none;
       }
-      /* In help mode the dim background is inert — match the cursor to that. */
-      #overlay[data-mode="help"] {
+      /* Help / leaderboard / gameover are full take-overs: hide the debug panel
+         so it doesn't tile under the panel text. */
+      #overlay[data-mode="help"]        #debug-menu,
+      #overlay[data-mode="leaderboard"] #debug-menu,
+      #overlay[data-mode="gameover"]    #debug-menu {
+        display: none;
+      }
+      /* In help / leaderboard mode the dim background is inert — match cursor. */
+      #overlay[data-mode="help"],
+      #overlay[data-mode="leaderboard"] {
         cursor: default;
       }
       /* Title screen styling — frog-green title with a soft glow. */
@@ -165,6 +180,132 @@
         margin: 0 0.1rem;
       }
       #btn-help-close {
+        align-self: center;
+        margin-top: 1.2rem;
+      }
+      /* Leaderboard panel — shared between title-view (BACK button) and
+         game-over (final-score line + click-to-restart hint). */
+      #overlay-leaderboard {
+        max-width: 560px;
+        padding: 1.4rem 2rem;
+        background: rgba(20, 20, 20, 0.85);
+        border: 1px solid rgba(255, 216, 107, 0.45);
+        text-align: center;
+        font-size: 0.9rem;
+        letter-spacing: 0.04em;
+      }
+      #overlay-leaderboard .lb-title {
+        font-size: 1.5rem;
+        letter-spacing: 0.22em;
+        color: #ffd86b;
+        text-shadow: 0 0 12px #ff9a2a, 0 0 4px #000;
+        margin-bottom: 1.2rem;
+      }
+      #overlay-leaderboard .lb-title.gameover {
+        color: #ff8b8b;
+        text-shadow: 0 0 12px #b01818, 0 0 4px #000;
+      }
+      #overlay-leaderboard .lb-final {
+        font-size: 1rem;
+        letter-spacing: 0.15em;
+        color: #fff;
+        margin-bottom: 1rem;
+      }
+      #overlay-leaderboard .lb-final .new-hi {
+        color: #ffd86b;
+        margin-left: 0.6rem;
+      }
+      #leaderboard-entries {
+        list-style: none;
+        margin: 0 auto;
+        padding: 0;
+        font-family: monospace;
+        font-size: 0.95rem;
+        text-align: left;
+        min-width: 26rem;
+      }
+      #leaderboard-entries li {
+        display: grid;
+        grid-template-columns: 2.4rem 7.5rem 1fr auto auto;
+        gap: 0.7rem;
+        align-items: baseline;
+        padding: 0.18rem 0.6rem;
+        border-bottom: 1px dotted rgba(255, 255, 255, 0.08);
+        letter-spacing: 0.06em;
+      }
+      #leaderboard-entries li:last-child {
+        border-bottom: none;
+      }
+      #leaderboard-entries .lb-rank {
+        color: #ffd86b;
+        font-weight: bold;
+      }
+      #leaderboard-entries .lb-name {
+        color: #cfe9d8;
+        text-transform: uppercase;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #leaderboard-entries .lb-score {
+        color: #fff;
+        text-align: right;
+      }
+      #leaderboard-entries .lb-level {
+        color: #b8e0ff;
+        font-size: 0.8rem;
+      }
+      #leaderboard-entries .lb-date {
+        color: #888;
+        font-size: 0.78rem;
+      }
+      #leaderboard-entries li.highlight {
+        background: rgba(255, 216, 107, 0.18);
+        border-left: 3px solid #ffd86b;
+        padding-left: 0.45rem;
+      }
+      #leaderboard-entries li.highlight .lb-score,
+      #leaderboard-entries li.highlight .lb-name {
+        color: #ffd86b;
+        text-shadow: 0 0 6px #ff9a2a;
+      }
+      /* Inline name-edit field shown in the highlighted row on game-over. Sits
+         in the same grid cell the .lb-name span normally occupies, so the row
+         layout doesn't shift when it's swapped in/out. */
+      #leaderboard-entries .lb-name-input {
+        font-family: monospace;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #ffd86b;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 216, 107, 0.7);
+        border-radius: 2px;
+        padding: 0.05rem 0.3rem;
+        width: 100%;
+        min-width: 0;
+        outline: none;
+      }
+      #leaderboard-entries .lb-name-input:focus {
+        border-color: #ffd86b;
+        box-shadow: 0 0 6px rgba(255, 154, 42, 0.6);
+      }
+      #leaderboard-entries .lb-empty {
+        text-align: center;
+        opacity: 0.6;
+        font-style: italic;
+        letter-spacing: 0.1em;
+        padding: 1rem 0;
+        display: block;
+      }
+      .lb-gameover-hint {
+        margin-top: 1.2rem;
+        font-size: 0.85rem;
+        letter-spacing: 0.18em;
+        color: #fff;
+        opacity: 0.85;
+      }
+      #btn-leaderboard-close {
         align-self: center;
         margin-top: 1.2rem;
       }
@@ -582,6 +723,7 @@
         <div class="overlay-buttons">
           <button id="btn-play" type="button">CLICK TO PLAY</button>
           <button id="btn-help-open" type="button">HOW TO PLAY</button>
+          <button id="btn-leaderboard-open" type="button">LEADERBOARD</button>
         </div>
       </div>
       <div id="overlay-prompt" class="overlay-section">
@@ -607,6 +749,13 @@
           <p><strong>Score —</strong> chain near-misses (THREADED, GRAZED) to build your combo multiplier. Crossing a level untouched grants a bonus. Five lives total.</p>
         </div>
         <button id="btn-help-close" type="button">BACK</button>
+      </div>
+      <div id="overlay-leaderboard" class="overlay-section">
+        <div class="lb-title" id="leaderboard-title">LEADERBOARD</div>
+        <div class="lb-final" id="leaderboard-final"></div>
+        <ol id="leaderboard-entries"></ol>
+        <div class="lb-gameover-hint">CLICK ANYWHERE FOR NEW RUN</div>
+        <button id="btn-leaderboard-close" type="button">BACK</button>
       </div>
       <div id="debug-menu">
         <div class="dm-title">DEBUG · TESTING ONLY</div>

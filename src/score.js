@@ -17,6 +17,8 @@ import {
   UNTOUCHABLE_BONUS_BASE,
   UNTOUCHABLE_STREAK_BONUS,
   HIGH_SCORE_KEY,
+  HIGH_SCORE_LIST_KEY,
+  LEADERBOARD_SIZE,
   XP_PER_LEVEL_BASE,
   FROG_LEVEL_CAP,
   FOCUS_NEAR_MISS_MULT,
@@ -28,6 +30,42 @@ import {
 // Cumulative XP required to BE at frog level N. Lv 1 = 0, Lv 2 = 1000, Lv 3 = 3000.
 export function xpForLevel(n) {
   return XP_PER_LEVEL_BASE * n * (n - 1) / 2;
+}
+
+// Leaderboard player-name plumbing. We keep a separate localStorage entry for
+// the last-used name so the gameover input pre-fills with whatever the player
+// typed last run — small dignity, big QoL.
+const PLAYER_NAME_KEY = 'frogger.playerName';
+const DEFAULT_NAME = 'FROG';
+export const NAME_MAX_LENGTH = 12;
+
+export function loadPlayerName() {
+  try {
+    const raw = localStorage.getItem(PLAYER_NAME_KEY);
+    if (raw && typeof raw === 'string') {
+      const clean = sanitizeName(raw);
+      if (clean) return clean;
+    }
+  } catch {}
+  return DEFAULT_NAME;
+}
+
+export function savePlayerName(name) {
+  const clean = sanitizeName(name);
+  try {
+    localStorage.setItem(PLAYER_NAME_KEY, clean);
+  } catch {}
+  return clean;
+}
+
+// Strip control chars + leading/trailing whitespace, cap length, uppercase.
+// Falls back to DEFAULT_NAME for empty input so the leaderboard never shows
+// a blank cell.
+function sanitizeName(name) {
+  if (name == null) return DEFAULT_NAME;
+  const stripped = String(name).replace(/[\x00-\x1f\x7f]/g, '').trim();
+  const upper = stripped.slice(0, NAME_MAX_LENGTH).toUpperCase();
+  return upper || DEFAULT_NAME;
 }
 
 // Run-state: lives, score, combo multiplier, in-traffic survival timer, high score.
@@ -74,6 +112,11 @@ export class Score {
     // Awards UNTOUCHABLE_STREAK_BONUS per step BEYOND the first. Reset on death
     // or recomb burn (the run-end reset path also clears it via reset()).
     this._untouchableStreak = 0;
+
+    // Rank (1-indexed) the just-finished run earned on the leaderboard, or null
+    // if it didn't make the cut. Set by onDeath when game-over fires; consumed
+    // by hud.showGameOver to highlight the new entry. Cleared on reset().
+    this.lastRank = null;
   }
 
   reset() {
@@ -95,6 +138,7 @@ export class Score {
     this._diedThisLevel = false;
     this._recombUsedThisLevel = false;
     this._untouchableStreak = 0;
+    this.lastRank = null;
   }
 
   totalScore() {
@@ -269,7 +313,9 @@ export class Score {
 
   // On collision death. Returns true iff this was the final life (game over).
   // Pending score is forfeit; banked survives until game over.
-  onDeath() {
+  // `level` is the game-level the run ended on; persisted with the leaderboard
+  // entry so the gameover panel can show "Lv 12" alongside the score.
+  onDeath(level) {
     this.lives--;
     this.pending = 0;
     this.combo = 1;
@@ -282,30 +328,108 @@ export class Score {
     this._untouchableStreak = 0;
     if (this.lives <= 0) {
       this.gameOver = true;
-      if (this.banked > this.highScore) {
-        this.highScore = this.banked;
-        saveHighScore(this.highScore);
-      }
+      // Submit with the player's last-used name as the default. The HUD pops
+      // an inline-edit field on the highlighted row so they can change it
+      // before clicking through to the next run; updateScoreName persists the
+      // edit (and savePlayerName remembers it for next time).
+      this.lastRank = submitScore(this.banked, level ?? 1, loadPlayerName());
+      const top = loadScores()[0];
+      if (top && top.score > this.highScore) this.highScore = top.score;
       return true;
     }
     return false;
   }
 }
 
-function loadHighScore() {
+// Loads the persisted top-N leaderboard. On first run after upgrading from the
+// single-value `frogger.highscore` storage, the legacy value is migrated into
+// a one-entry list so the player's prior best isn't lost.
+export function loadScores() {
   try {
-    const raw = localStorage.getItem(HIGH_SCORE_KEY);
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+    const raw = localStorage.getItem(HIGH_SCORE_LIST_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(isValidEntry)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, LEADERBOARD_SIZE);
+      }
+    }
   } catch {
-    return 0;
+    // fall through to legacy migration / empty
+  }
+  try {
+    const legacy = Number(localStorage.getItem(HIGH_SCORE_KEY));
+    if (Number.isFinite(legacy) && legacy > 0) {
+      const seed = [{ score: legacy, level: 1, date: '' }];
+      saveScores(seed);
+      return seed;
+    }
+  } catch {
+    // localStorage unavailable
+  }
+  return [];
+}
+
+// Submits a finished run. Returns the 1-indexed rank if it made the top N,
+// or null otherwise. A score of 0 never qualifies (the table reads cleaner
+// without "0 · Lv 1" entries cluttering the bottom).
+export function submitScore(score, level, name) {
+  if (!Number.isFinite(score) || score <= 0) return null;
+  const scores = loadScores();
+  const entry = {
+    name: sanitizeName(name),
+    score: Math.floor(score),
+    level: Math.max(1, Math.floor(level)),
+    date: new Date().toISOString().slice(0, 10),
+  };
+  scores.push(entry);
+  scores.sort((a, b) => b.score - a.score);
+  const trimmed = scores.slice(0, LEADERBOARD_SIZE);
+  const idx = trimmed.indexOf(entry);
+  if (idx === -1) return null;
+  saveScores(trimmed);
+  return idx + 1;
+}
+
+// Replace the name on the entry at the given 1-indexed rank. Used by the HUD
+// inline-edit on game-over so the player can rename the entry submitScore
+// already wrote (with their previous default name). Also persists the new
+// name as the default for next run via savePlayerName. No-op if `rank` is out
+// of range (e.g. localStorage was cleared between submit and edit).
+export function updateScoreName(rank, name) {
+  if (!Number.isFinite(rank) || rank < 1) return null;
+  const scores = loadScores();
+  const idx = rank - 1;
+  if (idx >= scores.length) return null;
+  const clean = sanitizeName(name);
+  scores[idx] = { ...scores[idx], name: clean };
+  saveScores(scores);
+  savePlayerName(clean);
+  return clean;
+}
+
+function isValidEntry(e) {
+  return (
+    e &&
+    typeof e === 'object' &&
+    Number.isFinite(e.score) &&
+    e.score > 0 &&
+    Number.isFinite(e.level) &&
+    e.level >= 1
+  );
+}
+
+function saveScores(list) {
+  try {
+    localStorage.setItem(HIGH_SCORE_LIST_KEY, JSON.stringify(list));
+  } catch {
+    // localStorage unavailable — silently skip
   }
 }
 
-function saveHighScore(value) {
-  try {
-    localStorage.setItem(HIGH_SCORE_KEY, String(value));
-  } catch {
-    // localStorage unavailable (private mode etc.) — silently skip persistence.
-  }
+function loadHighScore() {
+  const top = loadScores()[0];
+  return top ? top.score : 0;
 }

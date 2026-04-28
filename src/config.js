@@ -314,7 +314,9 @@ export const UNTOUCHABLE_STREAK_BONUS = 250;
 // Near-miss proximity (used by collision.detectNearMisses).
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
 
-export const HIGH_SCORE_KEY = 'frogger.highscore';
+export const HIGH_SCORE_KEY = 'frogger.highscore';   // legacy single-value (migrated into list on first load)
+export const HIGH_SCORE_LIST_KEY = 'frogger.scores'; // top-N leaderboard, JSON array
+export const LEADERBOARD_SIZE = 10;
 export const MUTE_KEY = 'frogger.muted';
 
 // --- XP / Frog level ---
