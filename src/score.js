@@ -3,6 +3,7 @@ import {
   SCORE_THREADED,
   SCORE_UNDER,
   SCORE_GRAZED,
+  SCORE_DAREDEVIL_BONUS,
   COMBO_BUMP_THREADED,
   COMBO_BUMP_GRAZED,
   COMBO_BUMP_BUG,
@@ -14,6 +15,7 @@ import {
   SCORE_BUG_BASE,
   CROSSING_BASE_BONUS,
   UNTOUCHABLE_BONUS_BASE,
+  UNTOUCHABLE_STREAK_BONUS,
   HIGH_SCORE_KEY,
   XP_PER_LEVEL_BASE,
   FROG_LEVEL_CAP,
@@ -68,6 +70,10 @@ export class Score {
     // Untouchable bonus to fire. Reset inside bankCrossing.
     this._diedThisLevel = false;
     this._recombUsedThisLevel = false;
+    // Streak counter — # of consecutive crossings the player has been Untouchable.
+    // Awards UNTOUCHABLE_STREAK_BONUS per step BEYOND the first. Reset on death
+    // or recomb burn (the run-end reset path also clears it via reset()).
+    this._untouchableStreak = 0;
   }
 
   reset() {
@@ -88,6 +94,7 @@ export class Score {
     this.recombCharges = 0;
     this._diedThisLevel = false;
     this._recombUsedThisLevel = false;
+    this._untouchableStreak = 0;
   }
 
   totalScore() {
@@ -141,9 +148,12 @@ export class Score {
   // Near-miss event. tier ∈ {'THREADED','UNDER','GRAZED'}. (Wired in S2.)
   // `vehicle` is the source vehicle — its type's `scoreThreaded` overrides the
   // SCORE_THREADED default so smaller vehicles pay more for a thread.
+  // `opts.daredevil` (THREADED only) layers a flat SCORE_DAREDEVIL_BONUS onto
+  // the base before combo scaling — fired when the frog threaded BOTH wheel-
+  // row lines of the same vehicle in one approach.
   // While Frog Focus is active (Lv 3+), THREADED/GRAZED base is multiplied by
   // FOCUS_NEAR_MISS_MULT and the focus meter fills proportional to event tier.
-  addNearMiss(tier, vehicle) {
+  addNearMiss(tier, vehicle, opts = {}) {
     // UNDER ("DOWN UNDER") payout scales with the running combo so chaining
     // bodies overhead is rewarding, but does NOT bump the combo or reset its
     // idle timer — sitting passively in a safe Z gap shouldn't farm combo.
@@ -155,6 +165,7 @@ export class Score {
     let base, bump, fill;
     if (tier === 'THREADED') {
       base = vehicle?.type?.scoreThreaded ?? SCORE_THREADED;
+      if (opts.daredevil) base += SCORE_DAREDEVIL_BONUS;
       bump = COMBO_BUMP_THREADED;
       fill = FOCUS_FILL_THREADED;
     }
@@ -201,6 +212,7 @@ export class Score {
     if (this.recombCharges <= 0) return false;
     this.recombCharges--;
     this._recombUsedThisLevel = true;
+    this._untouchableStreak = 0;
     return true;
   }
 
@@ -209,14 +221,22 @@ export class Score {
   // focus meter on Untouchable). Banked points double as XP; any frog-level
   // thresholds crossed get queued onto `_levelUpQueue`.
   bankCrossing(level) {
-    // Untouchable: no death, no recomb charge burned this level. Award before
+    // Untouchable: no death, no recomb charge burned this level. Flat base
+    // payout + a streak bonus per consecutive Untouchable beyond the first
+    // (1st = base, 2nd = base + 250, 3rd = base + 500, ...). Award before
     // banking so the bonus rolls into pending (and thus banked + XP). Toast is
-    // queued so HUD picks it up next drainToasts().
+    // queued so HUD picks it up next drainToasts(); shows the streak count
+    // when it's > 1 so the player can see the chain growing.
     let untouchableBonus = 0;
     if (!this._diedThisLevel && !this._recombUsedThisLevel) {
-      untouchableBonus = UNTOUCHABLE_BONUS_BASE * level;
+      this._untouchableStreak++;
+      const streakBonus = (this._untouchableStreak - 1) * UNTOUCHABLE_STREAK_BONUS;
+      untouchableBonus = UNTOUCHABLE_BONUS_BASE + streakBonus;
       this.pending += untouchableBonus;
-      this._toastQueue.push(`UNTOUCHABLE +${untouchableBonus.toLocaleString()}`);
+      const label = this._untouchableStreak > 1
+        ? `UNTOUCHABLE x${this._untouchableStreak} +${untouchableBonus.toLocaleString()}`
+        : `UNTOUCHABLE +${untouchableBonus.toLocaleString()}`;
+      this._toastQueue.push(label);
     }
     this._diedThisLevel = false;
     this._recombUsedThisLevel = false;
@@ -259,6 +279,7 @@ export class Score {
     this.focusMeter = 0;
     this.focusActive = false;
     this._diedThisLevel = true;
+    this._untouchableStreak = 0;
     if (this.lives <= 0) {
       this.gameOver = true;
       if (this.banked > this.highScore) {

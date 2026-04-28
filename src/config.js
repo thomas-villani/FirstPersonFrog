@@ -281,6 +281,12 @@ export const STARTING_LIVES = 5;
 export const SCORE_THREADED = 300;
 export const SCORE_UNDER = 25;
 export const SCORE_GRAZED = 100;
+// Daredevil: extra points layered on top of THREADED when the frog threads
+// BOTH wheel-row lines of the same vehicle during a single approach (e.g.,
+// hop in to under, then hop again out the other side). Flat bonus added to
+// the THREADED base before the combo multiplier, so it still scales with
+// streaks and Frog Focus.
+export const SCORE_DAREDEVIL_BONUS = 750;
 export const COMBO_BUMP_THREADED = 2.0;
 export const COMBO_BUMP_GRAZED = 1.5;
 export const COMBO_BUMP_BUG = 1.5;
@@ -297,9 +303,13 @@ export const SCORE_BUG_BASE = 100;
 export const CROSSING_BASE_BONUS = 250;       // bonus per level on bank
 
 // Untouchable: awarded on a crossing if the player neither died nor used a
-// Recombobulation charge during the level just completed. Scales with level.
-// If the Frog Focus skill is unlocked, the focus meter is also refilled to full.
+// Recombobulation charge during the level just completed. Flat base reward;
+// consecutive Untouchable crossings add UNTOUCHABLE_STREAK_BONUS per step
+// beyond the first (so 2nd in a row = base + 250, 3rd = base + 500, etc.).
+// A break (death or recomb) resets the streak. If the Frog Focus skill is
+// unlocked, the focus meter is also refilled to full.
 export const UNTOUCHABLE_BONUS_BASE = 1000;
+export const UNTOUCHABLE_STREAK_BONUS = 250;
 
 // Near-miss proximity (used by collision.detectNearMisses).
 export const GRAZE_RADIUS = 0.5;             // m beyond frog/wheel hitbox edges
@@ -317,13 +327,13 @@ export const FROG_LEVEL_CAP = 17;
 // --- Bugs ---
 // Placed at level start in `bugs.placeBugsForLevel`. BUG_RISK_WEIGHT = chance a
 // given bug lands on a wheel-path sub-row (deadly) instead of a safe stripe.
-// Bug count scales with level (more lanes → more bugs to find), capped so a
-// level isn't drowning in collectibles.
+// Count tracks lane count one-for-one — early-level players want more bugs to
+// hunt while traffic is sparse, late levels still scale up through the lane
+// growth curve. The base ensures even a 1-lane level (level 1) has 5 bugs.
 export const BUGS_PER_LEVEL_BASE = 4;
-export const BUGS_PER_LEVEL_CAP = 20;
 export const BUG_RISK_WEIGHT = 0.7;
 export function bugCountForLevel(level) {
-  return Math.min(BUGS_PER_LEVEL_CAP, BUGS_PER_LEVEL_BASE + Math.floor(level / 3));
+  return BUGS_PER_LEVEL_BASE + laneCountForLevel(level);
 }
 
 // --- Tongue flick ---

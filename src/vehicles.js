@@ -87,8 +87,14 @@ export class Vehicle {
     //                 this vehicle's wheel-row Z lines while the wheelbase X
     //                 was over the frog. Fires THREADED instead of the base
     //                 tier, regardless of UNDER.
-    // All three reset on the firing frame so the next approach starts fresh.
-    this.nearMiss = { tier: null, lastSign: 0, threadedHop: false };
+    //   threadedRows: bitmask of which wheel-row INDICES (bit 0 = wheelRows[0],
+    //                 bit 1 = wheelRows[1]) have been threaded under the
+    //                 wheelbase during this approach. Mask === 3 = both sides
+    //                 of the vehicle threaded → DAREDEVIL bonus on firing.
+    //                 Skipped on singleTrack vehicles where the two wheel
+    //                 rows collapse to a single Z-line.
+    // All four reset on the firing frame so the next approach starts fresh.
+    this.nearMiss = { tier: null, lastSign: 0, threadedHop: false, threadedRows: 0 };
   }
 
   update(dt) {

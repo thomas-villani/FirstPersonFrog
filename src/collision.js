@@ -136,15 +136,27 @@ export function detectNearMisses(frog, vehicles) {
       // away doesn't pay out — the wheels must currently be straddling the
       // frog. Both gates are checked at hop-time only; sit-still and
       // sideways-in-gap hops never satisfy the row-span requirement.
+      //
+      // Each crossed wheel-row index also OR's into threadedRows. Both bits
+      // set during a single approach (threading IN across one wheel-row,
+      // traversing the wheelbase Z-strip across however many forward hops the
+      // wheel-track demands — up to 4 hops on a wide truck — then OUT across
+      // the other wheel-row, all while the vehicle's wheelbase X still
+      // straddles the frog) elevates the event to DAREDEVIL. Practically
+      // viable only on long slow vehicles whose X-overlap window stays open
+      // across the whole maneuver. Distinct-row guard skips the bookkeeping
+      // for singleTrack vehicles whose two wheel-row indices share a Z-line.
       if (frog.state === 'HOPPING') {
         const wheelbaseHalfL = v.wheelbaseHalfL;
         if (wheelbaseHalfL > 0 && Math.abs(v.x - fx) < wheelbaseHalfL) {
           const lo = Math.min(frog.prevRow, frog.row);
           const hi = Math.max(frog.prevRow, frog.row);
-          for (const wr of v.wheelRows) {
+          const distinctRows = v.wheelRows[0] !== v.wheelRows[1];
+          for (let i = 0; i < v.wheelRows.length; i++) {
+            const wr = v.wheelRows[i];
             if (lo <= wr && wr <= hi) {
               v.nearMiss.threadedHop = true;
-              break;
+              if (distinctRows) v.nearMiss.threadedRows |= (1 << i);
             }
           }
         }
@@ -153,17 +165,21 @@ export function detectNearMisses(frog, vehicles) {
 
     // Fire on transition from approaching → past, then re-arm. THREADED wins
     // outright when set — the frog earned the active skill bonus regardless
-    // of whatever passive tier was also tracked.
+    // of whatever passive tier was also tracked. If both wheel-row indices
+    // were threaded during the approach, attach `daredevil: true` so the
+    // score layer can apply the bonus payout + toast.
     if (wasApproaching && !isApproaching) {
       let firedTier = null;
       if (v.nearMiss.threadedHop) firedTier = 'THREADED';
       else if (v.nearMiss.tier) firedTier = v.nearMiss.tier;
       if (firedTier) {
         if (!fired) fired = [];
-        fired.push({ tier: firedTier, vehicle: v });
+        const daredevil = firedTier === 'THREADED' && v.nearMiss.threadedRows === 3;
+        fired.push({ tier: firedTier, vehicle: v, daredevil });
       }
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
+      v.nearMiss.threadedRows = 0;
     }
 
     v.nearMiss.lastSign = sign;

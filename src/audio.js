@@ -169,23 +169,56 @@ export class AudioManager {
     osc.stop(now + 0.05);
   }
 
-  // Soft low thud for a rejected hop — frog couldn't go that way (obstacle or
-  // playfield edge). Distinct from playHop (wet splat) and playSquish (death):
-  // a muffled tap with no body, so it reads as "nope" without alarming.
+  // Negative "nope" buzz for a rejected hop — frog couldn't go that way
+  // (obstacle or playfield edge). The previous low sine (170→95 Hz) lived
+  // inside the engine fundamental band (48–145 Hz) and got masked under
+  // traffic. This version uses a square wave descending 520→260 Hz, well
+  // above engine fundamentals + their first harmonics, plus a brief
+  // bandpassed-noise click on the attack so the START punches through even
+  // if the tone gets EQ-buried.
   playBlocked() {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
-    const dur = 0.09;
+    const dur = 0.11;
+
+    // Click transient: 25ms of bandpassed white noise around 1.6 kHz so the
+    // attack reads as a percussive "tk" even on top of low-end engine rumble.
+    const noiseDur = 0.025;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * noiseDur), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const env = Math.exp(-(i / ctx.sampleRate) * 110);
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = 1600;
+    noiseFilter.Q.value = 1.5;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.35;
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.masterGain);
+    noise.start(now);
+
+    // Body tone: square wave for harmonic richness, descending pitch reads
+    // as "denied" without sounding alarming. Sits above the engine band.
     const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(170, now);
-    osc.frequency.exponentialRampToValueAtTime(95, now + dur);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(260, now + dur);
+    const oscFilter = ctx.createBiquadFilter();
+    oscFilter.type = 'lowpass';
+    oscFilter.frequency.value = 2200;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.22, now + 0.01);
+    gain.gain.linearRampToValueAtTime(0.32, now + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    osc.connect(gain);
+    osc.connect(oscFilter);
+    oscFilter.connect(gain);
     gain.connect(this.masterGain);
     osc.start(now);
     osc.stop(now + dur + 0.02);

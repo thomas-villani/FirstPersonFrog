@@ -149,9 +149,12 @@ export class Game {
     }
 
     // Seed the road with traffic from level 2 onward — level 1 stays a clean intro,
-    // but later levels should already feel busy when the new world fades in.
-    // Cap at 4/lane so we don't spawn more vehicles than the spacing guard can fit.
-    const prePopulate = level <= 1 ? 0 : Math.min(4, Math.floor(level / 2) + 1);
+    // but later levels should already feel busy when the new world fades in. Early
+    // levels (2-4) used to start near-empty because spawns drift in from off-screen
+    // over ~10 s; this floor pushes them straight to "feels alive" density. By
+    // level 4 we're at the cap. Cap stays at 4/lane to keep within the spacing
+    // guard on a 200m road.
+    const prePopulate = level <= 1 ? 0 : Math.min(4, Math.floor(level / 2) + 2);
     this.spawner.prePopulate(prePopulate);
 
     // Place collectible bugs for this level. Must run AFTER prePopulate so the
@@ -337,6 +340,7 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
+      v.nearMiss.threadedRows = 0;
       v.nearMiss.lastSign = 0;
     }
     this.recombCutscene = new RecombCutscene(this.scene, this.camera, this.frog);
@@ -374,6 +378,7 @@ export class Game {
     for (const v of this.spawner.vehicles) {
       v.nearMiss.tier = null;
       v.nearMiss.threadedHop = false;
+      v.nearMiss.threadedRows = 0;
       v.nearMiss.lastSign = 0;
     }
     this.deathCutscene = new DeathCutscene(this.scene, this.camera, this.frog, vehicle);
@@ -509,12 +514,13 @@ export class Game {
       // Near-miss events fire one per vehicle on the approach→pass transition.
       const nearMisses = detectNearMisses(this.frog, this.spawner.vehicles);
       if (nearMisses) {
-        for (const { tier, vehicle } of nearMisses) {
+        for (const { tier, vehicle, daredevil } of nearMisses) {
           const before = this.score.pending;
-          this.score.addNearMiss(tier, vehicle);
+          this.score.addNearMiss(tier, vehicle, { daredevil });
           const earned = this.score.pending - before;
           this.hud.onNearMiss();
           const label =
+            daredevil          ? `DAREDEVIL!! +${earned.toLocaleString()}` :
             tier === 'THREADED' ? `THREADED! +${earned.toLocaleString()}` :
             tier === 'UNDER'    ? `DOWN UNDER +${earned.toLocaleString()}` :
             tier === 'GRAZED'   ? `GRAZED +${earned.toLocaleString()}` : null;
