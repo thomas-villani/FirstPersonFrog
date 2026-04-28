@@ -100,6 +100,15 @@ export class Game {
     this._pendingLevelUps = [];
     this._pendingNextWorldLevel = null;
 
+    // BANK_PARADE: a brief frozen-world phase between crossing-bank and either
+    // SKILLPICK or the next _buildLevel. Holds the world still while the
+    // bonus/level-up toasts queued by bankCrossing actually render — without
+    // this, SKILLPICK's update() early-return would prevent the toast pumps
+    // from ever firing, so the picker would slap up before the player saw what
+    // they earned.
+    this._paradeTimer = 0;
+    this._paradePendsPicker = false;
+
     this.state = 'PAUSED';
     this.hasIntroPlayed = false;
     this._introElapsed = 0;
@@ -140,7 +149,7 @@ export class Game {
 
     this.scene = buildWorld(laneCount, this.theme);
     this.obstacles = placeObstaclesForLevel(level, this.scene, laneCount);
-    this.frog = new Frog(this.scene, this.camera, goalRow);
+    this.frog = new Frog(this.scene, this.camera, goalRow, this.skills);
     this.frog.isBlocked = (row, cellX) => {
       for (let i = 0; i < this.obstacles.length; i++) {
         const o = this.obstacles[i];
@@ -197,6 +206,8 @@ export class Game {
       this._pendingNextWorldLevel = null;
       this._levelUpToastQueue.length = 0;
       this._levelUpToastTimer = 0;
+      this._paradeTimer = 0;
+      this._paradePendsPicker = false;
       this._focusActive = false;
       if (this.fxFocusEl) this.fxFocusEl.style.opacity = '0';
       this.hud.resetForNewRun();
@@ -495,6 +506,29 @@ export class Game {
     // crossing transition and flips back to PLAYING.
     if (this.state === 'SKILLPICK') return;
 
+    // Brief post-crossing frozen-world phase. Vehicles/frog/audio engines are
+    // not ticked, but milestone + level-up toast pumps continue so the player
+    // sees what they earned (UNTOUCHABLE, FROG LEVEL N, etc.) before the
+    // picker modal — or the next world level — takes over.
+    if (this.state === 'BANK_PARADE') {
+      const toasts = this.score.drainToasts();
+      if (toasts) for (const t of toasts) this.hud.showMilestoneToast(t);
+      this._pumpLevelUpToasts(dt);
+      this._paradeTimer -= dt;
+      if (this._paradeTimer <= 0) {
+        if (this._paradePendsPicker) {
+          this._paradePendsPicker = false;
+          this._enterSkillPick();
+        } else {
+          this.state = 'PLAYING';
+          const newLevel = this.hud.onWin();
+          this.audio.playWin();
+          this._buildLevel(newLevel);
+        }
+      }
+      return;
+    }
+
     if (this.state === 'DYING') {
       // Frog is frozen, but traffic keeps rolling past the splat — sells the
       // gag (cars don't care). Engines keep doppler-tracking the frog's last
@@ -555,7 +589,7 @@ export class Game {
 
     this.frog.update(dt);
     this.spawner.update(dtScaled);
-    this.bugs.update(dtScaled);
+    this.bugs.update(dtScaled, this.frog, this.skills);
     this.tongue.update(dt);
     this._pumpLevelUpToasts(dt);
 
@@ -631,22 +665,40 @@ export class Game {
         // Drain any frog-level-ups the bank just produced. Every level-up
         // fires a "FROG LEVEL N" toast + the level-up sting; only those
         // at-or-below the skill cap also enqueue a picker spend.
-        const levelUps = this.score.drainLevelUps();
-        if (levelUps) {
+        const levelUps = this.score.drainLevelUps() || [];
+        if (levelUps.length > 0) {
           for (const newLevel of levelUps) {
             this._levelUpToastQueue.push(`FROG LEVEL ${newLevel}`);
           }
           this.audio.playLevelUp();
           const spendable = levelUps.filter((lv) => lv <= SKILL_POINT_CAP_LEVEL);
-          if (spendable.length > 0) {
+          const pendsPicker = spendable.length > 0;
+          if (pendsPicker) {
             // Defer hud.onWin / audio.playWin / _buildLevel until the picker
             // queue empties — _exitSkillPick runs the crossing transition.
             this._pendingLevelUps.push(...spendable);
             this._pendingNextWorldLevel = this.level + 1;
-            this._enterSkillPick();
-            return;
           }
+          // Enter BANK_PARADE so the queued toasts (UNTOUCHABLE bonus + the
+          // FROG LEVEL N sequence) render before the picker modal — or the
+          // next-level rebuild — takes over. Parade duration covers whichever
+          // sequence runs longest:
+          //   - milestone toast (UNTOUCHABLE / SURVIVED) = 1.1 s
+          //   - level-up toast queue = 0.45 s spacing × queueLength + 1.4 s tail
+          const luQueueLen = this._levelUpToastQueue.length;
+          const milestoneDur = 1.1;
+          const luSequenceDur = luQueueLen > 0 ? (luQueueLen - 1) * 0.45 + 1.4 : 0;
+          this._paradeTimer = Math.max(milestoneDur, luSequenceDur);
+          this._paradePendsPicker = pendsPicker;
+          this.state = 'BANK_PARADE';
+          // Engines hold their last gain when not ticked — silence them so the
+          // parade phase isn't an unmoving hum under the toasts.
+          this.audio.silenceEngines(this.spawner.vehicles);
+          return;
         }
+        // No level-ups: snap-rebuild as before. The UNTOUCHABLE toast (if any)
+        // queues into score._toastQueue and renders during the next level's
+        // first frames; no parade needed.
         const newLevel = this.hud.onWin();
         this.audio.playWin();
         this._buildLevel(newLevel);

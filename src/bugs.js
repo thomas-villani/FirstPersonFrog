@@ -8,6 +8,8 @@ import {
   laneCountForLevel,
   rowToZ,
   cellXToWorldX,
+  CELL_WIDTH,
+  BUG_MAGNET_DRIFT_SPEED,
 } from './config.js';
 
 // Shared bug geometry + materials. Cheap because every bug looks the same and
@@ -54,6 +56,11 @@ class Bug {
     this.kind = kind;
     this.scene = scene;
     this._tElapsed = 0;
+    // Real-valued X residual relative to the integer cellX, used by Bug Magnet
+    // drift so the bug slides toward the frog visually without breaking the
+    // (row, cellX) integer-cell collection match. When |xOffset| crosses
+    // CELL_WIDTH/2 we snap cellX to the new integer and zero out the residual.
+    this._xOffset = 0;
 
     this.group = new THREE.Group();
     this.group.position.set(cellXToWorldX(cellX), 0, rowToZ(row));
@@ -108,15 +115,50 @@ class Bug {
     scene.add(this.group);
   }
 
-  update(dt) {
+  update(dt, frog, skills) {
     this._tElapsed += dt;
     if (this.kind === 'extraLife') {
       this.group.rotation.y += BUG_EXTRALIFE_ROT_SPEED * dt;
       this.group.position.y =
         BUG_EXTRALIFE_HOVER_AMP * (1 + Math.sin(this._tElapsed * BUG_EXTRALIFE_HOVER_SPEED));
-    } else {
-      this.group.rotation.y += BUG_ROT_SPEED * dt;
+      return;
     }
+    this.group.rotation.y += BUG_ROT_SPEED * dt;
+
+    // Bug Magnet (Tongue Fu T3+): bugs within radius drift along X toward
+    // frog.cellX while the frog is IDLE. Continuous worldX drift; the integer
+    // cellX snaps when the drifted bug crosses a half-cell boundary, so mercy
+    // auto-collect (which compares integer cellX) still triggers correctly.
+    if (!frog || !skills || frog.state !== 'IDLE') return;
+    const radius = skills.bugMagnetRadius();
+    if (radius <= 0) return;
+    const bugX = cellXToWorldX(this.cellX) + this._xOffset;
+    const bugZ = rowToZ(this.row);
+    const frogX = cellXToWorldX(frog.cellX);
+    const frogZ = rowToZ(frog.row);
+    const dx = frogX - bugX;
+    const dz = frogZ - bugZ;
+    if (dx * dx + dz * dz > radius * radius) return;
+    // Drift X only (Z fixed per plan §5.1 / §7.2).
+    const sign = Math.sign(dx);
+    if (sign === 0) return;
+    const step = BUG_MAGNET_DRIFT_SPEED * dt;
+    let nextOffset = this._xOffset + sign * step;
+    // Don't overshoot the frog's cell center.
+    const targetOffset = frogX - cellXToWorldX(this.cellX);
+    if (sign > 0 && nextOffset > targetOffset) nextOffset = targetOffset;
+    if (sign < 0 && nextOffset < targetOffset) nextOffset = targetOffset;
+    this._xOffset = nextOffset;
+    // Snap integer cellX when residual crosses a half-cell, so collection-by-
+    // integer-match keeps working as the bug moves visually.
+    if (this._xOffset >= CELL_WIDTH / 2 && this.cellX < STRAFE_MAX) {
+      this.cellX += 1;
+      this._xOffset -= CELL_WIDTH;
+    } else if (this._xOffset <= -CELL_WIDTH / 2 && this.cellX > -STRAFE_MAX) {
+      this.cellX -= 1;
+      this._xOffset += CELL_WIDTH;
+    }
+    this.group.position.x = cellXToWorldX(this.cellX) + this._xOffset;
   }
 
   worldPos() {
@@ -215,8 +257,8 @@ export class BugManager {
     }
   }
 
-  update(dt) {
-    for (const b of this.bugs) b.update(dt);
+  update(dt, frog, skills) {
+    for (const b of this.bugs) b.update(dt, frog, skills);
   }
 
   // Mercy auto-collect: if a bug exists at the frog's exact (row, cellX), remove

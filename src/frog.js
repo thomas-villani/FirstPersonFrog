@@ -17,7 +17,7 @@ const BOB_DURATION = HEAD_BOB_DECAY_MS / 1000;
 // State machine: IDLE | HOPPING | DEAD.
 // Hard-commit: inputs are only accepted when state === IDLE. Mid-hop presses are dropped.
 export class Frog {
-  constructor(scene, camera, goalRow) {
+  constructor(scene, camera, goalRow, skills = null) {
     this.group = new THREE.Group();
     scene.add(this.group);
 
@@ -31,11 +31,14 @@ export class Frog {
     this.cellX = 0;
     this.goalRow = goalRow;
     this.state = 'IDLE';
+    this.skills = skills;
 
-    // Hop tween state.
+    // Hop tween state. _hopDuration is recomputed at each tryHop start so the
+    // Hip Hopping speed-bump tier scales the tween without caching stale values.
     this._hopStart = new THREE.Vector3();
     this._hopEnd = new THREE.Vector3();
     this._hopElapsed = 0;
+    this._hopDuration = HOP_DURATION;
     this._hopArcMultiplier = 1; // sqrt(longjump multiplier) — taller arc on longer hops
     this._deadElapsed = 0;
     this._bobElapsed = BOB_DURATION; // start "finished"
@@ -122,6 +125,8 @@ export class Frog {
     this._hopStart.set(cellXToWorldX(this.cellX), 0, rowToZ(this.row));
     this._hopEnd.set(cellXToWorldX(newCell), 0, rowToZ(newRow));
     this._hopElapsed = 0;
+    const durMult = this.skills?.hopDurationMult?.() ?? 1;
+    this._hopDuration = HOP_DURATION * durMult;
     this._hopArcMultiplier = multiplier > 1 ? Math.sqrt(multiplier) : 1;
     this.prevRow = this.row;
     this.row = newRow;
@@ -133,7 +138,7 @@ export class Frog {
   update(dt) {
     if (this.state === 'HOPPING') {
       this._hopElapsed += dt;
-      const t = Math.min(this._hopElapsed / HOP_DURATION, 1);
+      const t = Math.min(this._hopElapsed / this._hopDuration, 1);
       const ease = easeInOutQuad(t);
       this.group.position.x = this._hopStart.x + (this._hopEnd.x - this._hopStart.x) * ease;
       this.group.position.z = this._hopStart.z + (this._hopEnd.z - this._hopStart.z) * ease;

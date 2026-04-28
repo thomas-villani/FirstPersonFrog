@@ -31,7 +31,7 @@ Read order when picking this up across sessions:
 - **One point per frog level.** Each frog-level-up grants exactly one skill point. The player chooses which branch to spend it on.
 - **Forced sequential within a branch.** No tier skipping. Each branch is a 1→7 ladder; spending a point on a branch advances by one tier.
 - **Tongue Fu T1 is pre-spent at run start.** A fresh run already has the basic 1-cell Tongue Flick on Spacebar, so the player has *something* interactive from the first hop. The first earnable point is at Frog Lv 2.
-- **Frog Level cap = 28.** 27 earnable points + the free Tongue Fu T1 = exactly enough to max all four 7-tier branches. Beyond Lv 28, XP keeps banking but no further unlocks.
+- **Two caps, not one.** `FROG_LEVEL_CAP = 99` — frog level keeps climbing for score/identity (the game is infinite). `SKILL_POINT_CAP_LEVEL = 28` — only the first 27 earned points (Lv 2–28) trigger the picker; the free Tongue Fu T1 plus 27 spends maxes all four 7-tier branches. Levels 29–99 still fire a `FROG LEVEL N` toast + the level-up sting, but no picker.
 - **Skill picker is a between-crossings modal.** When level-up(s) fire, world freezes, modal shows the four branches' next available tier; player presses 1–4 to spend. Multiple queued points show the modal once per point. World resumes when queue empty.
 - **Backward Hop is always available** (not gated, not in any branch). A single direction key isn't an interesting unlock.
 - **Branch tier is the source of truth in `skills.js`.** Per-mechanic queries are exposed as helpers (`skills.tongueRange()`, `skills.canPlague()`, `skills.recombCap()`). Feature code never compares branch tiers to magic numbers.
@@ -66,19 +66,21 @@ Read order when picking this up across sessions:
 
 **Banked points are XP.** XP accumulates across crossings within a run and is wiped on game over. XP is not consumed on level-up; thresholds are cumulative.
 
-**XP thresholds (cumulative).** Quadratic curve: `XP_FOR(N) = XP_PER_LEVEL_BASE * N * (N-1) / 2` with `XP_PER_LEVEL_BASE = 500`.
+**XP thresholds (cumulative).** Quadratic curve: `XP_FOR(N) = XP_PER_LEVEL_BASE * N * (N-1) / 2` with `XP_PER_LEVEL_BASE = 1000`.
 
 ```
-Frog Lv  2:    500 XP    → 1st earnable point
-Frog Lv  5:  5,000
-Frog Lv 10: 22,500
-Frog Lv 15: 52,500
-Frog Lv 20: 95,000
-Frog Lv 25: 150,000
-Frog Lv 28: 189,000      → fully maxed (27 earned + 1 free Tongue Fu T1)
+Frog Lv  2:    1,000 XP   → 1st earnable point
+Frog Lv  5:   10,000
+Frog Lv 10:   45,000
+Frog Lv 15:  105,000
+Frog Lv 20:  190,000
+Frog Lv 25:  300,000
+Frog Lv 28:  378,000      → all branches maxable (27 earned + 1 free Tongue Fu T1)
+Frog Lv 50: 1,225,000     → score-only past 28; no picker
+Frog Lv 99: ~4,851,000    → cap (XP keeps banking but level stops climbing)
 ```
 
-The curve is unchanged from the prior plan; only the cap moved (17 → 28). Late-run grind to max may need re-tuning post-playtest — at high tiers the player has all the survival tools and crossings get more lucrative, so growth probably accelerates fine.
+Base bumped from 500 → 750 → 1000 across playtests — leveling was still too quick at 750. Each step costs `base × N` XP (linear in N), so the ramp is gentle through the picker phase and gets meaningfully steeper into the score-only tail. Re-tune in S17 if the late game feels grindy.
 
 **Level-up flow.** When `bankCrossing` causes XP to cross one or more thresholds:
 1. Score queues the new levels onto `_levelUpQueue`.
@@ -537,7 +539,9 @@ Add to `config.js` (existing constants like `STARTING_LIVES`, `SCORE_THREADED`, 
 
 ```js
 // --- Frog level ---
-export const FROG_LEVEL_CAP = 28;            // bumped from 17
+export const FROG_LEVEL_CAP = 99;            // bumped from 17 (infinite-game vibe)
+export const SKILL_POINT_CAP_LEVEL = 28;     // last frog level that grants a picker spend
+export const XP_PER_LEVEL_BASE = 1000;       // bumped 500 → 750 → 1000 (playtest: leveling too easy)
 
 // --- Tongue Fu (indexed by tongueFu tier 0..7) ---
 export const TONGUE_RANGE_BY_TIER       = [0, 1, 2, 3, 3, 3, 3, 3];     // cells
@@ -594,19 +598,22 @@ Each phase ends in a runnable build. Pick up at the first unchecked box.
 
 ### New phases — branch system rewrite
 
-- [ ] **Phase S5 — Skill picker + branch infrastructure.** Refactor `skills.js` to the branch-tier model (`tongueFu`, `hipHopping`, `frogcentration`, `hocusCroakus`) with tier 0..7 each, `spend(branchId)` method, and the helper API (`tongueRange()`, `recombCap()`, etc.). Initialize with `tongueFu = 1` pre-spent. Refactor existing call sites in `game.js`, `tongue.js`, `score.js`, `hud.js` to use the new helpers instead of the old `skills.has(name)` / `skills.tier(name)` calls. Add SKILLPICK game state. Implement picker modal in `hud.js` (DOM, keyboard 1-4). Wire `Game._levelUpQueue` → SKILLPICK → `skills.spend()` → resume PLAYING. Bump `FROG_LEVEL_CAP` to 28. **End of phase: existing skills (Tongue T1-T3, Focus T1, Recomb T1) work, but only when the player chooses them via the picker. The other branches' first-tier picks are no-ops until their phases land.**
-- [ ] **Phase S6 — Hip Hopping T1+T2+T3 (Hop Speed + Long Jump unlock).** `Frog` applies `skills.hopDurationMult()` per hop. `input.js` reads Shift modifier; long-hop targets multiplied by `skills.longJumpMult()`. Clamp long hops to playfield. Picker now has a meaningful pick on Hip Hopping.
-- [ ] **Phase S7 — Tongue Fu T4 (Bug Magnet upgrade).** Update `bugs.js` to use `skills.bugMagnetRadius()` and `skills.bugScoreMult()`. Score helper applies the multiplier on pickup.
-- [ ] **Phase S8 — Frogcentration T2/T3/T4 (duration + passive recharge).** Replace `FOCUS_DURATIONS` index lookups with `skills.focusDuration()`. Add passive recharge in `score.update()` when `!focusActive` using `skills.focusPassiveRecharge()`.
-- [ ] **Phase S9 — Hocus Croakus T2/T3 (Recomb 2/3 charge cap).** `_refillRecombCharges` already reads `RECOMB_CHARGES_BY_TIER` — refactor to `skills.recombCap()`.
+- [x] **Phase S5 — Skill picker + branch infrastructure.** ✅ Shipped 2026-04-27 (commit `218cc9a`). `skills.js` rewritten to the branch-tier model with `tongueFu/hipHopping/frogcentration/hocusCroakus`, tier 0..7, `spend()` + the full helper API. Tongue Fu T1 pre-spent on every fresh run. SKILLPICK game state added; picker modal renders from `BRANCH_META` and reacts to keys 1–4. World freezes during the picker — engines silenced, retro 2-voice square-wave loop in G pentatonic plays. `FROG_LEVEL_CAP` bumped to 99 (infinite frog level for score/identity); new `SKILL_POINT_CAP_LEVEL = 28` gates picker spends, levels 29–99 score-only. `XP_PER_LEVEL_BASE` bumped 500 → 750 → 1000 across two playtests. Old `_applySkills` / `Skills.update` / `levelUpLabel` deleted. Follow-up 2026-04-28: added `BANK_PARADE` state between PLAYING and SKILLPICK so bonus toasts (UNTOUCHABLE, FROG LEVEL N) finish rendering before the picker modal opens — duration sized to `max(1.1s, levelUpQueue × 0.45 + 1.4)`.
+  - Working at end of S5: Tongue Fu T1–T3 (range), Frogcentration T1 (Frog Focus enable), Hocus Croakus T1 (1 recomb charge), Hip Hopping T3 + T7 (long jump 2× and 4×), bug magnet at the legacy single radius (S4 behavior, untouched).
+  - Picker spend lights up but mechanic is **deferred** for: Tongue Fu T3+ Bug Magnet upgrade, T4 score mult, T5–T7 Ribbit Roar; Hip Hopping T1/T2/T4–T6 hop-speed bumps; Frogcentration T2–T4 duration + passive recharge, T5–T7 Echolocation; Hocus Croakus T2/T3 charge cap (helper exists; verify in S9), T4–T6 Psychedelic Sight, T7 Plague of Frogs.
+- [x] **Phase S6 — Hip Hopping T1+T2+T3 (Hop Speed + Long Jump unlock).** ✅ Shipped 2026-04-28. `Frog` constructor now takes `skills`; `tryHop` recomputes `_hopDuration = HOP_DURATION * skills.hopDurationMult()` at every hop start (no caching), and the `update` tween divides by `_hopDuration`. Long Jump (Shift + WASD) was already live; T1/T2 cumulative speed bumps now flow through. T4–T7 tier bumps will engage automatically as the player spends those points.
+- [x] **Phase S7a — Bug Magnet T3 drift (passive).** ✅ Shipped 2026-04-28. `Bug.update` accepts `(dt, frog, skills)`; non-extra-life bugs within `skills.bugMagnetRadius()` of an IDLE frog drift along X at `BUG_MAGNET_DRIFT_SPEED` toward the frog's column. Real-valued `_xOffset` tracks sub-cell residual; integer `cellX` snaps when `|xOffset|` crosses `CELL_WIDTH/2` so mercy auto-collect (which compares integer cellX) keeps working. T3 unlocks the drift; T4 widens the radius automatically (helper-driven).
+- [ ] **Phase S7 — Tongue Fu T4 (Bug Magnet score upgrade).** Drift is wired (S7a above). Remaining: wire `skills.bugScoreMult()` into `score.addBugPickup()` so T4 awards ×1.5 on pickup.
+- [ ] **Phase S8 — Frogcentration T2/T3/T4 (duration + passive recharge).** Focus duration is already wired through `skills.focusDuration()` (S5 work). Remaining: add passive recharge in `score.update()` when `!focusActive` using `skills.focusPassiveRecharge()`.
+- [ ] **Phase S9 — Hocus Croakus T2/T3 (Recomb 2/3 charge cap).** `_refillRecombCharges` already calls `skills.recombCap()` (S5 refactor) — verify on playtest that cap actually scales to 2/3 when the player spends T2/T3.
 - [ ] **Phase S10 — Tongue Fu T5/T6/T7 (Ribbit Roar).** `input.js` E-key handler. `spawner.js` brake hook (per-vehicle `roarBrakeTimer`, speed × 0.5 while > 0). Use counter resets per crossing. Screen shake + wheel-flash visual. `playRoar()`.
-- [ ] **Phase S11 — Hip Hopping T4-T7 (more hop speed + Double Long Jump).** Cumulative speed bumps already wired in S6 via `hopDurationMult()` array — just confirm tier 4-6 indices return the expected values. T7's "Double Long Jump" wires to the longJumpMult tier-7 entry (4×). *Decide here:* if the user picks the chain interpretation instead, refactor input/frog to allow a second long-jump-mid-air.
+- [ ] **Phase S11 — Hip Hopping T4-T7 (more hop speed + Double Long Jump).** Cumulative speed bumps already wired in the `HOP_DURATION_MULT_BY_TIER` array — once S6 consumes the helper, T4–T6 just work. T7's "Double Long Jump" wires to the `LONG_JUMP_MULT_BY_TIER` tier-7 entry (4×). *Decide here:* if the user picks the chain interpretation instead, refactor input/frog to allow a second long-jump-mid-air.
 - [ ] **Phase S12 — Frogcentration T5-T7 (Echolocation L1/L2/L3).** Bottom-right `<canvas>`. Render level-scoped vehicle list each frame. L2 adds direction arrows + reddening. L3 adds ETA brightness.
 - [ ] **Phase S13 — Hocus Croakus T4-T6 (Psychedelic Sight L1/L2/L3).** Per-lane road material. Each frame: per in-scope lane, find closest crossing-path vehicle, compute ETA, set tint. Lane scope + ETA window by sight level.
 - [ ] **Phase S14 — Hocus Croakus T7 (Plague of Frogs).** Q key, separate use counter, snapshot all vehicle speeds → zero → restore after `PLAGUE_DURATION`. Frog-rain sprite layer + green flash + `playPlague()`.
 - [ ] **Phase S15 — FX layer (post-processing).** `EffectComposer` + CA/tint shader. Wire Frog Focus (replace the existing DOM `#focus-tint` placeholder), Plague flash, level-up flash.
-- [ ] **Phase S16 — Audio polish.** All near-miss stings, tongue flick, plague chorus, focus sweeps, level-up sting, recomb chime, skill-pick chime. Tune volumes against engine bus.
-- [ ] **Phase S17 — Polish & tuning.** XP curve (does Lv 28 feel reachable but not trivial?), branch balance (does any branch get skipped consistently?), picker UX (modal readability, key feedback). CSS pass on HUD + branch-tier badge bar.
+- [ ] **Phase S16 — Audio polish.** Near-miss stings, tongue flick (already in), plague chorus, focus sweeps (already in), level-up sting (already in), recomb chime (already in), skill-pick chime, picker melody volume balance against engines + win chime. Tune volumes against engine bus.
+- [ ] **Phase S17 — Polish & tuning.** XP curve at base=750 — does Lv 28 feel reachable but not trivial? Does Lv 99 feel achievable on a hot run? Branch balance (does any branch get skipped consistently?). Picker UX (modal readability, key feedback). CSS pass on HUD + branch-tier badge bar. `FROG Lv 99 (MAX)` HUD copy.
 
 ---
 

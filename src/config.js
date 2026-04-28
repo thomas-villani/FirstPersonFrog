@@ -319,7 +319,7 @@ export const MUTE_KEY = 'frogger.muted';
 
 // --- XP / Frog level ---
 // Cumulative XP to BE at level N: XP_PER_LEVEL_BASE * N * (N-1) / 2.
-// So Lv 1 = 0 XP, Lv 2 = 750, Lv 3 = 2250, Lv 4 = 4500, ...
+// So Lv 1 = 0 XP, Lv 2 = 1000, Lv 3 = 3000, Lv 4 = 6000, ...
 // Banked points double as XP. Game-over wipes XP and frog level.
 //
 // Two distinct caps: frog level keeps climbing for score/identity all the way
@@ -328,7 +328,7 @@ export const MUTE_KEY = 'frogger.muted';
 // has 27 spent + 1 free Tongue Fu T1 = all four 7-tier branches at T7.
 // Frog levels above SKILL_POINT_CAP_LEVEL still tick up + fire a "FROG LEVEL N"
 // toast, but no skill picker.
-export const XP_PER_LEVEL_BASE = 750;
+export const XP_PER_LEVEL_BASE = 1000;
 export const FROG_LEVEL_CAP = 99;
 export const SKILL_POINT_CAP_LEVEL = 28;
 

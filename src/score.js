@@ -25,7 +25,7 @@ import {
   FOCUS_FILL_BUG,
 } from './config.js';
 
-// Cumulative XP required to BE at frog level N. Lv 1 = 0, Lv 2 = 500, Lv 3 = 1500.
+// Cumulative XP required to BE at frog level N. Lv 1 = 0, Lv 2 = 1000, Lv 3 = 3000.
 export function xpForLevel(n) {
   return XP_PER_LEVEL_BASE * n * (n - 1) / 2;
 }
@@ -51,7 +51,7 @@ export class Score {
     this.gameOver = false;
     this._toastQueue = [];
     // XP accumulates as banked points do. Level 1 = empty baseline (no skills);
-    // Lv 2 (500 XP) is the first earned skill (Tongue T1). Wiped on game over.
+    // Lv 2 (1000 XP) is the first earnable skill point. Wiped on game over.
     this.xp = 0;
     this.frogLevel = 1;
     this._levelUpQueue = [];
