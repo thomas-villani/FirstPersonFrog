@@ -6,9 +6,9 @@ Project orientation for Claude Code sessions.
 
 First-person Frogger browser game — single-player MVP scaffold. Read in this order when resuming:
 
-1. [`frogger-fps-spec.md`](./frogger-fps-spec.md) — the design vision (tone, multiplayer stretch, river level).
-2. [`PLAN.md`](./PLAN.md) — the MVP build spec with a 10-phase checklist. Before making changes, check the boxes against the actual state of `src/` to see what's done.
-3. `src/config.js` — all tunable numbers live here.
+1. [`docs/frogger-fps-spec.md`](./docs/frogger-fps-spec.md) — the design vision (tone, multiplayer stretch, river level).
+2. [`docs/PLAN.md`](./docs/PLAN.md) — the MVP build spec with a 10-phase checklist. Before making changes, check the boxes against the actual state of `src/` to see what's done.
+3. `src/config.js` — all tunable numbers live here. See [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md) for a tuning guide.
 
 ## Stack (locked — don't revisit)
 
@@ -66,4 +66,4 @@ There are no automated tests. UI and audio changes can only be confirmed by play
 
 ## Out of scope (deferred until MVP ships)
 
-Multiplayer, river level, level progression, ragdoll deaths, top-down death replay, chiptune music, CRT/vertex-jitter filters, mobile, VR, leaderboards. See `PLAN.md` §10. Each is its own plan when the time comes.
+Multiplayer, river level, level progression, ragdoll deaths, top-down death replay, chiptune music, CRT/vertex-jitter filters, mobile, VR, leaderboards. See `docs/PLAN.md` §10. Each is its own plan when the time comes.

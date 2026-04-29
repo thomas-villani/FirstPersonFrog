@@ -357,7 +357,7 @@ export function bugCountForLevel(level) {
 
 // --- Skill branches: tier-indexed mechanic arrays ---
 // Each branch has 7 tiers. Arrays are length 8 so [tier] indexes directly,
-// with index 0 = unspent baseline. PLAN_SCORING.md §11 is the source of truth.
+// with index 0 = unspent baseline. docs/PLAN_SCORING.md §11 is the source of truth.
 
 // 🥋 Tongue Fu: tongue + bug magnet + ribbit roar.
 // T1 is pre-spent on every fresh run, so a baseline tongue (1 cell) is always

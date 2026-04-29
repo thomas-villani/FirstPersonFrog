@@ -44,7 +44,7 @@ WASD is **camera-relative**: the yaw is snapped to one of four cardinal grid qua
 
 ## What the game is
 
-Cross every lane to advance. Lane count grows with the game level (1–8 lanes); past level 16 lane direction starts randomly flipping and spawn density ramps up. Each crossing rebuilds the world for the new lane count.
+Cross every lane to advance. Lane count grows with the game level — `ceil(level / 2)`, uncapped. Past level 16 lane directions start randomly flipping and spawn density ramps up. Past level 30 a rush-hour override may force every lane in one direction. Each crossing rebuilds the world.
 
 The strip between a vehicle's front and rear axles is a **survivable body-gap** — the frog can land between axles. Wheels kill, bodies don't.
 
@@ -52,7 +52,7 @@ Scoring: each near-miss (THREADED, GRAZED, UNDER) builds a combo multiplier; bug
 
 ## Tuning
 
-Everything playtest-tunable lives in [`src/config.js`](./src/config.js) — hop duration and arc, camera FOV, fog range, vehicle dimensions, per-lane spawn tables, scoring constants, audio doppler.
+Everything playtest-tunable lives in [`src/config.js`](./src/config.js) — hop duration and arc, camera FOV, fog range, vehicle dimensions, per-lane spawn tables, scoring constants, audio doppler. See [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md) for a category-by-category tour of every knob and what it does.
 
 ## Project layout
 
@@ -78,12 +78,44 @@ src/
 
 ## Documentation
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — module reference, per-frame data flow, state machine. Read this before changing how systems fit together.
-- [`frogger-fps-spec.md`](./frogger-fps-spec.md) — design vision (tone, scale, multiplayer stretch).
-- [`PLAN.md`](./PLAN.md) — original MVP build spec; phases 1–10 shipped.
-- [`PLAN_SCORING.md`](./PLAN_SCORING.md) — scoring and skills system spec; partially in flight.
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — module reference, per-frame data flow, state machine. Read this before changing how systems fit together.
+- [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md) — every tunable in `src/config.js` explained, grouped by category.
+- [`docs/frogger-fps-spec.md`](./docs/frogger-fps-spec.md) — design vision (tone, scale, multiplayer stretch).
+- [`docs/PLAN.md`](./docs/PLAN.md) — original MVP build spec; phases 1–10 shipped.
+- [`docs/PLAN_SCORING.md`](./docs/PLAN_SCORING.md) — scoring and skills system spec; partially in flight.
+- [`docs/instructions.md`](./docs/instructions.md) — in-game how-to-play reference.
+- [`CHANGELOG.md`](./CHANGELOG.md) — versioned release notes (Keep a Changelog format).
 - [`CLAUDE.md`](./CLAUDE.md) — orientation for AI-assisted sessions, including locked-in design decisions.
+
+## Releasing
+
+Versions are managed with [`bump-my-version`](https://callowayproject.github.io/bump-my-version/). The config in `.bumpversion.toml` updates `package.json`, `package-lock.json`, the `[Unreleased]` section header in `CHANGELOG.md`, and the changelog compare links — then commits and tags `vX.Y.Z`.
+
+```sh
+# Add bullets under ## [Unreleased] in CHANGELOG.md, stage them, then:
+bump-my-version bump patch    # 0.1.0 → 0.1.1
+bump-my-version bump minor    # 0.1.0 → 0.2.0
+bump-my-version bump major    # 0.1.0 → 1.0.0
+git push --follow-tags
+```
+
+Pass `--dry-run --verbose` first if you want to see the diff without writing.
 
 ## Status
 
-MVP shipped. Scoring, lives, XP, skills (tongue flick), bugs, and the death cutscene have been layered on top — see `PLAN_SCORING.md` for the in-progress slice. Multiplayer, the river level, and additional vehicle types remain deferred (`PLAN.md` §10).
+MVP shipped. Scoring, lives, XP, skills (tongue flick), bugs, biome themes, the cinematic intro, the death cutscene, and a top-10 leaderboard have been layered on top. The game is live at <https://thomas-villani.github.io/FirstPersonFrog/>.
+
+## Coming soon
+
+Things that are sketched but not yet shipped — roughly the order they're likely to land. Each is its own scoped plan when the time comes:
+
+- **More skills wired up.** A few branch tiers from `docs/PLAN_SCORING.md` are arrays-only right now: Plague of Frogs (Q), Echolocation visualization, Psychedelic Sight road tint, late-tier Hip Hopping speed bumps, Ribbit Roar's brake hook on the spawner.
+- **Nails on the road.** Tires blow out, vehicles swerve off the road and explode dramatically. Pure polish/comedy moment.
+- **Legend Mode.** 1-life run variant with its own leaderboard.
+- **River level.** The §8 stretch goal from the design doc — log-hopping at frog-eye level, water below.
+- **Crossing recap.** End-of-level screen with points breakdown, bugs collected, threading count.
+- **Sloppy drivers at high levels.** Lane-line riders, sinusoidal swervers, texters drifting then snapping back. Currently lanes are perfectly behaved.
+- **Weather, night levels, sun glare at sunset.** Atmospheric variety past the existing four biomes.
+- **Multiplayer.** From the original design doc §13 — the longest deferred. Its own plan when the single-player loop is fully done.
+
+See `docs/PLAN.md` §10–§11 for the full deferred list, and the design doc (`docs/frogger-fps-spec.md`) for the underlying vision.

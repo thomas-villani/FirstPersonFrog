@@ -1,6 +1,6 @@
 # Architecture
 
-Runtime reference for First-Person Frog. Read this when you need to understand how the modules fit together before changing one. For build-time decisions and design vision, see [`PLAN.md`](./PLAN.md), [`PLAN_SCORING.md`](./PLAN_SCORING.md), and [`frogger-fps-spec.md`](./frogger-fps-spec.md). For locked-in decisions worth not relitigating, see [`CLAUDE.md`](./CLAUDE.md).
+Runtime reference for First-Person Frog. Read this when you need to understand how the modules fit together before changing one. For build-time decisions and design vision, see [`PLAN.md`](./PLAN.md), [`PLAN_SCORING.md`](./PLAN_SCORING.md), and [`frogger-fps-spec.md`](./frogger-fps-spec.md). For locked-in decisions worth not relitigating, see [`CLAUDE.md`](../CLAUDE.md). For per-tunable explanations of `src/config.js`, see [`CONFIGURATION.md`](./CONFIGURATION.md).
 
 ## Game state machine
 
@@ -55,7 +55,7 @@ Game.update(dt)
 
 ## Coordinate system
 
-Canonical reference is in [`CLAUDE.md`](./CLAUDE.md). Quick recap:
+Canonical reference is in [`CLAUDE.md`](../CLAUDE.md). Quick recap:
 
 - +Y up, +X right, **−Z forward** (toward the goal).
 - Each lane has `SUB_ROWS_PER_LANE = 8` sub-rows; world Z = `-row * SUB_ROW_DEPTH` (0.5m per sub-row).
