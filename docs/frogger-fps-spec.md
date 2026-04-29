@@ -1,6 +1,6 @@
 # First-Person Frogger — Game Design Document
 
-**Working Title:** FROGGER: ROAD VIEW  
+**Working Title:** FIRST PERSON FROG  
 **Genre:** First-person arcade / comedy horror  
 **Tagline:** *"You are the frog now."*
 
