@@ -7,6 +7,7 @@ import {
   HEAD_BOB_DECAY_MS,
   STRAFE_MAX,
   START_ROW,
+  LONG_JUMP_TIME_MULT_BY_DISTANCE,
   rowToZ,
   cellXToWorldX,
 } from './config.js';
@@ -126,7 +127,8 @@ export class Frog {
     this._hopEnd.set(cellXToWorldX(newCell), 0, rowToZ(newRow));
     this._hopElapsed = 0;
     const durMult = this.skills?.hopDurationMult?.() ?? 1;
-    this._hopDuration = HOP_DURATION * durMult;
+    const distTimeMult = LONG_JUMP_TIME_MULT_BY_DISTANCE[multiplier] ?? 1;
+    this._hopDuration = HOP_DURATION * durMult * distTimeMult;
     this._hopArcMultiplier = multiplier > 1 ? Math.sqrt(multiplier) : 1;
     this.prevRow = this.row;
     this.row = newRow;

@@ -162,7 +162,12 @@ export const LEVELS_PER_LANE_STEP = 2; // 2 levels per lane added
 // --- Vehicle types ---
 // Dimensions in meters. From a 5cm eye, these should feel MASSIVE.
 // `wheelRowSpread` = number of sub-rows between the two wheel-path lines (left vs right wheels).
-//   Sedan spread=4 → 2.0m wheel-track. Truck spread=5 → 2.5m wheel-track.
+//   With SUB_ROWS_PER_LANE=8, the lane has 7 deadly sub-rows + 1 safe stripe.
+//   Sedan/boxVan use spread=3 (1.5m wt, pairs {1,4},{2,5},{3,6},{4,7}) — a single
+//   type covers every deadly row, so no "safe middle row" exists in any mixed lane.
+//   Truck uses spread=4 (2.0m wt, pairs {1,5},{2,6},{3,7}) — covers 6/7 deadly rows
+//   (misses row 4); pure-truck lanes mix a narrower vehicle to keep row 4 lethal.
+//   doubleTrailer keeps spread=5 (its template always mixes in narrower vehicles).
 //   Wheels never land on the lane's last sub-row (that's the safe between-lane stripe).
 // `scoreThreaded` overrides SCORE_THREADED per type — shorter wheelbases are
 // harder to thread, so smaller vehicles pay more.
@@ -176,11 +181,11 @@ export const LEVELS_PER_LANE_STEP = 2; // 2 levels per lane added
 //                bodies (cab + 2 trailers). Total length+gaps must equal size.L.
 export const VEHICLE_TYPES = {
   sedan: {
-    size: { L: 4.5, W: 2.0, H: 1.5 },
+    size: { L: 4.5, W: 1.5, H: 1.5 },
     color: 0xcc3344,
     wheelRadius: 0.35,
     wheelWidth: 0.25,
-    wheelRowSpread: 4,
+    wheelRowSpread: 3,
     scoreThreaded: 500,
   },
   truck: {
@@ -188,15 +193,17 @@ export const VEHICLE_TYPES = {
     color: 0x3355aa,
     wheelRadius: 0.55,
     wheelWidth: 0.35,
-    wheelRowSpread: 5,
+    wheelRowSpread: 4,
+    bodyWidth: 2.5,
     scoreThreaded: 300,
   },
   boxVan: {
-    size: { L: 7, W: 2.0, H: 2.8 },
+    size: { L: 7, W: 1.8, H: 2.8 },
     color: 0xc8a050,
     wheelRadius: 0.4,
     wheelWidth: 0.28,
-    wheelRowSpread: 4,
+    wheelRowSpread: 3,
+    bodyWidth: 1.8,
     scoreThreaded: 400,
   },
   motorcycle: {
@@ -239,7 +246,9 @@ const LANE_TEMPLATES = [
   { speedRange: [10, 14], spawnInterval: [1.2, 2.4], mix: [['sedan', 0.5], ['truck', 0.5]] },
   { speedRange: [8, 12], spawnInterval: [1.4, 2.6], mix: [['sedan', 0.6], ['truck', 0.4]] },
   { speedRange: [11, 15], spawnInterval: [1.0, 2.2], mix: [['sedan', 0.4], ['truck', 0.6]] },
-  { speedRange: [6, 9], spawnInterval: [2.0, 3.5], mix: [['truck', 1.0]] },
+  // Heavy slow lane — mostly trucks, occasional sedan so the middle sub-row
+  // (which truck wheel-tracks can't reach with spread=4) still gets visited.
+  { speedRange: [6, 9], spawnInterval: [2.0, 3.5], mix: [['truck', 0.8], ['sedan', 0.2]] },
   // Industrial: heavy mixed freight. doubleTrailer caps the wheelbase, so
   // spawnInterval is generous to keep gaps for threading.
   { speedRange: [7, 10], spawnInterval: [2.0, 3.4],
@@ -364,6 +373,10 @@ export const ROAR_BRAKE_DURATION_BY_TIER  = [0, 0, 0, 0, 0, 1.0, 2.0, 2.0]; // s
 // T7 on Double Long Jump). Cumulative: 0.95^N gets faster each step.
 export const HOP_DURATION_MULT_BY_TIER    = [1.0, 0.95, 0.9025, 0.9025, 0.857, 0.815, 0.774, 0.774];
 export const LONG_JUMP_MULT_BY_TIER       = [1, 1, 1, 2, 2, 2, 2, 4];
+// Long jumps cost more wall-clock time than a single hop so the frog isn't
+// invulnerable for the same window while crossing 2× / 4× the distance.
+// Keyed by LONG_JUMP_MULT (1 / 2 / 4) → time multiplier on HOP_DURATION.
+export const LONG_JUMP_TIME_MULT_BY_DISTANCE = { 1: 1, 2: 1.6, 4: 3 };
 
 // 🧘 Frogcentration: frog focus + echolocation.
 export const FOCUS_DURATION_BY_TIER       = [0, 6, 8, 10, 12, 12, 12, 12]; // s at full meter
@@ -407,7 +420,10 @@ export const RECOMB_HOLD_DURATION    = 0.30;          // s — flat hold
 
 // --- Long Jump (binding constants — multiplier is per-tier above) ---
 // Shift + WASD multiplies hop distance via skills.longJumpMult().
-// Same HOP_DURATION → effective velocity scales with tier; arc height scales by sqrt(tier).
+// Hop duration scales by LONG_JUMP_TIME_MULT_BY_DISTANCE (1× → 1, 2× → 1.6, 4× → 3),
+// so a long jump isn't strictly faster — it covers more ground per hop but the
+// vulnerable window grows too, keeping the skill from trivializing wheel rows.
+// Arc height scales by sqrt(distance multiplier).
 // Long hops clamp to playfield edges instead of being rejected.
 // (Was originally Ctrl + WASD — but Ctrl+W closes the browser tab and pages
 // can't preventDefault on OS-level shortcuts, so we use Shift instead.)
